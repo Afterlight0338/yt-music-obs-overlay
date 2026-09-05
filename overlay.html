@@ -4,15 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>YouTube & YT Music OBS Overlay</title>
-  <!-- Local MQTT bundle with CDN fallback -->
-  <script src="mqtt.min.js"></script>
-  <script>
-    if (typeof mqtt === 'undefined') {
-      const cdn = document.createElement('script');
-      cdn.src = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
-      document.head.appendChild(cdn);
-    }
-  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Press+Start+2P&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
@@ -259,7 +250,7 @@
       display: none;
       flex-direction: column;
       gap: 4px;
-      background: rgba(14, 14, 18, 0.82);
+      background: rgba(14, 14, 18, 0.85);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       border: 1px solid var(--card-border);
@@ -291,7 +282,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 3px 0;
+      padding: 4px 0;
       border-top: 1px solid rgba(255, 255, 255, 0.05);
     }
 
@@ -766,7 +757,6 @@
         return;
       }
 
-      // Dynamic theme & accent sync
       if (data.theme && !forcedTheme) {
         applyTheme(data.theme);
       }
@@ -818,7 +808,6 @@
       progressFillEl.style.width = Math.min(100, Math.max(0, pct)) + '%';
     }
 
-    // Local smooth progress ticker between broadcast updates
     setInterval(() => {
       if (isPlaying && durationSeconds > 0 && currentSeconds < durationSeconds) {
         currentSeconds += 0.25;
@@ -826,48 +815,116 @@
       }
     }, 250);
 
-    // Connect to public MQTT WebSocket broker (HiveMQ / EMQX with fallback)
-    const topic1 = `yt/overlay/${channelId}`;
-    const topic2 = `ytm/overlay/${channelId}`;
+    // Native Zero-Worker WebSocket MQTT Client
+    class NativeMQTTSubscriber {
+      constructor(brokers, channelId, onMsg) {
+        this.brokers = brokers;
+        this.brokerIdx = 0;
+        this.channelId = channelId;
+        this.onMsg = onMsg;
+        this.ws = null;
+        this.connected = false;
+        this.pingTimer = null;
+        this.connect();
+      }
+
+      connect() {
+        if (this.ws) {
+          try { this.ws.close(); } catch (e) {}
+        }
+        const brokerUrl = this.brokers[this.brokerIdx];
+        try {
+          this.ws = new WebSocket(brokerUrl, ['mqtt']);
+          this.ws.binaryType = 'arraybuffer';
+        } catch (e) {
+          this.retry();
+          return;
+        }
+
+        this.ws.onopen = () => {
+          this.sendConnect();
+        };
+
+        this.ws.onmessage = (evt) => {
+          const data = new Uint8Array(evt.data);
+          const packetType = data[0] >> 4;
+          if (packetType === 2) { // CONNACK
+            this.connected = true;
+            this.sendSubscribe([`yt/overlay/${this.channelId}`, `ytm/overlay/${this.channelId}`]);
+            clearInterval(this.pingTimer);
+            this.pingTimer = setInterval(() => {
+              if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(new Uint8Array([0xc0, 0x00])); // PINGREQ
+              }
+            }, 30000);
+          } else if (packetType === 3) { // PUBLISH
+            let offset = 1;
+            let multiplier = 1;
+            let digit;
+            do {
+              digit = data[offset++];
+              multiplier *= 128;
+            } while ((digit & 128) !== 0 && offset < data.length);
+
+            const topicLen = (data[offset] << 8) | data[offset + 1];
+            offset += 2;
+            const topic = new TextDecoder().decode(data.subarray(offset, offset + topicLen));
+            offset += topicLen;
+            const payloadStr = new TextDecoder().decode(data.subarray(offset));
+            try {
+              const parsed = JSON.parse(payloadStr);
+              if (this.onMsg) this.onMsg(parsed);
+            } catch (e) {}
+          }
+        };
+
+        this.ws.onclose = () => {
+          this.connected = false;
+          clearInterval(this.pingTimer);
+          this.retry();
+        };
+
+        this.ws.onerror = () => {
+          this.connected = false;
+        };
+      }
+
+      retry() {
+        this.brokerIdx = (this.brokerIdx + 1) % this.brokers.length;
+        setTimeout(() => this.connect(), 3000);
+      }
+
+      sendConnect() {
+        const clientId = 'obs_rec_' + Math.random().toString(16).substring(2, 8);
+        const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x74];
+        const version = 0x04;
+        const flags = 0x02;
+        const keepAlive = [0x00, 0x3c];
+        const clientIdBytes = new TextEncoder().encode(clientId);
+        const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
+        const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
+        const header = [0x10, payload.length];
+        this.ws.send(new Uint8Array([...header, ...payload]));
+      }
+
+      sendSubscribe(topics) {
+        const packetId = [0x00, 0x01];
+        let payload = [...packetId];
+        for (const t of topics) {
+          const topicBytes = new TextEncoder().encode(t);
+          payload.push((topicBytes.length >> 8) & 0xff, topicBytes.length & 0xff, ...topicBytes, 0x00);
+        }
+        const header = [0x82, payload.length];
+        this.ws.send(new Uint8Array([...header, ...payload]));
+      }
+    }
+
     const brokers = [
       'wss://broker.emqx.io:8084/mqtt',
       'wss://broker.hivemq.com:8884/mqtt'
     ];
 
-    let brokerIdx = 0;
-    let client = null;
-
-    function connectMQTT() {
-      const brokerUrl = brokers[brokerIdx];
-
-      client = mqtt.connect(brokerUrl, {
-        clientId: 'obs_rec_' + Math.random().toString(16).substring(2, 8),
-        clean: true,
-        reconnectPeriod: 3000
-      });
-
-      client.on('connect', () => {
-        client.subscribe([topic1, topic2], { qos: 0 });
-      });
-
-      client.on('message', (t, message) => {
-        try {
-          const data = JSON.parse(message.toString());
-          updateState(data);
-        } catch (e) {
-          console.error('Failed to parse message', e);
-        }
-      });
-
-      client.on('error', (err) => {
-        console.warn('MQTT error:', err);
-        client.end();
-        brokerIdx = (brokerIdx + 1) % brokers.length;
-        setTimeout(connectMQTT, 3000);
-      });
-    }
-
-    connectMQTT();
+    new NativeMQTTSubscriber(brokers, channelId, updateState);
   </script>
 </body>
 </html>

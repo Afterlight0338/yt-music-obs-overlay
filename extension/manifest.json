@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube & YT Music OBS Overlay Broadcaster",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Streams live now-playing video and song info from YouTube & YouTube Music to OBS Studio",
   "permissions": [
     "storage"
@@ -24,7 +24,7 @@
         "https://youtube.com/*",
         "https://music.youtube.com/*"
       ],
-      "js": ["mqtt.min.js", "content.js"],
+      "js": ["content.js"],
       "run_at": "document_idle"
     }
   ]
