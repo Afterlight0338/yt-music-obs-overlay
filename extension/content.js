@@ -2,7 +2,7 @@
  * YouTube & YouTube Music OBS Broadcaster - Content Script
  */
 (function () {
-  console.log('[YT-OBS] Broadcaster loaded on:', window.location.hostname);
+  console.log('[YT-OBS] Overlay broadcaster initialized on:', window.location.hostname);
 
   let channelId = 'yt-overlay';
   let theme = 'default';
@@ -11,7 +11,7 @@
   let client = null;
   let isConnected = false;
 
-  // Load preferences from storage
+  // Load settings from storage
   function loadSettings(cb) {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(['channelId', 'theme', 'accent', 'autohide'], (res) => {
@@ -28,7 +28,7 @@
     }
   }
 
-  // Listen for real-time theme/setting changes from popup
+  // Real-time settings listener
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'sync') {
@@ -41,19 +41,33 @@
         if (changes.accent) accent = changes.accent.newValue || '#ff0055';
         if (changes.autohide !== undefined) autohide = changes.autohide.newValue;
 
-        console.log('[YT-OBS] Settings updated:', { channelId, theme, accent, autohide });
+        console.log('[YT-OBS] Live settings updated:', { channelId, theme, accent, autohide });
         createBadge();
 
         if (channelChanged && client) {
           client.end(true, () => initMQTT());
         } else {
-          sendTrackInfo(); // Immediately push new theme to OBS!
+          // Instantly send updated theme/accent to OBS!
+          sendTrackInfo(true);
         }
       }
     });
   }
 
-  // Visual status badge on bottom right
+  // Listen for direct messages from popup
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg && msg.action === 'force_update') {
+        if (msg.theme) theme = msg.theme;
+        if (msg.accent) accent = msg.accent;
+        if (msg.autohide !== undefined) autohide = msg.autohide;
+        sendTrackInfo(true);
+        sendResponse({ success: true });
+      }
+    });
+  }
+
+  // Unobtrusive visual badge on bottom right
   function createBadge() {
     let badge = document.getElementById('yt-obs-status-badge');
     if (!badge) {
@@ -61,9 +75,9 @@
       badge.id = 'yt-obs-status-badge';
       badge.style.cssText = `
         position: fixed;
-        bottom: 85px;
+        bottom: 80px;
         right: 20px;
-        background: rgba(18, 18, 24, 0.88);
+        background: rgba(18, 18, 24, 0.9);
         color: #fff;
         border: 1px solid rgba(255, 255, 255, 0.15);
         backdrop-filter: blur(10px);
@@ -72,7 +86,7 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 11px;
         font-weight: 600;
-        z-index: 999999;
+        z-index: 9999999;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -82,14 +96,14 @@
         transition: transform 0.2s ease;
       `;
       badge.onclick = () => {
-        alert(`📡 OBS Overlay Active\n\nPlatform: ${window.location.hostname}\nChannel: ${channelId}\nTheme: ${theme}\nStatus: ${isConnected ? '🟢 Connected' : '🟡 Connecting...'}`);
+        alert(`📡 OBS Overlay Active\n\nPlatform: ${window.location.hostname}\nTheme: ${theme}\nStatus: ${isConnected ? '🟢 Connected to OBS' : '🟡 Connecting...'}\n\nChange themes anytime in the extension popup!`);
       };
       document.body.appendChild(badge);
     }
 
     badge.innerHTML = `
       <span style="width: 7px; height: 7px; border-radius: 50%; background: ${isConnected ? '#10b981' : '#f59e0b'}; display: inline-block;"></span>
-      <span>OBS Overlay</span>
+      <span>OBS: ${theme}</span>
     `;
   }
 
@@ -111,7 +125,7 @@
       client.on('connect', () => {
         isConnected = true;
         createBadge();
-        sendTrackInfo();
+        sendTrackInfo(true);
       });
 
       client.on('error', (err) => {
@@ -132,8 +146,11 @@
   }
 
   function getTrackData() {
-    const video = document.querySelector('video');
     const isYTM = window.location.hostname.includes('music.youtube.com');
+    const video = document.querySelector('video.html5-main-video') ||
+                  document.querySelector('#movie_player video') ||
+                  document.querySelector('video');
+
     const meta = navigator.mediaSession ? navigator.mediaSession.metadata : null;
 
     let title = '';
@@ -158,15 +175,24 @@
       }
     } else {
       // Regular YouTube Specific Selectors
-      const ytTitle = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string') ||
-                      document.querySelector('h1.ytd-watch-metadata') ||
-                      document.querySelector('#title h1 yt-formatted-string');
-      const ytChannel = document.querySelector('ytd-watch-metadata #channel-name #text a') ||
-                        document.querySelector('#owner #channel-name a') ||
-                        document.querySelector('ytd-channel-name yt-formatted-string');
+      const ytTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string') ||
+                        document.querySelector('h1.ytd-watch-metadata yt-formatted-string') ||
+                        document.querySelector('#title h1 yt-formatted-string') ||
+                        document.querySelector('h1.title yt-formatted-string') ||
+                        document.querySelector('#container h1.ytd-watch-metadata');
 
-      title = meta && meta.title ? meta.title : (ytTitle ? ytTitle.textContent.trim() : document.title.replace(' - YouTube', '').trim());
-      artist = meta && meta.artist ? meta.artist : (ytChannel ? ytChannel.textContent.trim() : 'YouTube');
+      const ytChannelEl = document.querySelector('ytd-watch-metadata #channel-name #text a') ||
+                          document.querySelector('#owner #channel-name a') ||
+                          document.querySelector('ytd-channel-name yt-formatted-string a') ||
+                          document.querySelector('#channel-name a');
+
+      title = meta && meta.title ? meta.title : (ytTitleEl ? ytTitleEl.textContent.trim() : '');
+      if (!title) {
+        title = document.title.replace(' - YouTube', '').replace(/^\(\d+\)\s*/, '').trim();
+      }
+
+      artist = meta && meta.artist ? meta.artist : (ytChannelEl ? ytChannelEl.textContent.trim() : 'YouTube');
+      album = 'YouTube';
 
       if (meta && meta.artwork && meta.artwork.length > 0) {
         artwork = meta.artwork[meta.artwork.length - 1].src;
@@ -174,13 +200,18 @@
         const vParam = new URLSearchParams(window.location.search).get('v');
         if (vParam) {
           artwork = `https://i.ytimg.com/vi/${vParam}/hqdefault.jpg`;
+        } else if (window.location.pathname.includes('/shorts/')) {
+          const shortId = window.location.pathname.split('/shorts/')[1]?.split('?')[0];
+          if (shortId) {
+            artwork = `https://i.ytimg.com/vi/${shortId}/hqdefault.jpg`;
+          }
         }
       }
     }
 
     const currentTime = video ? video.currentTime : 0;
     const duration = video && !isNaN(video.duration) ? video.duration : 0;
-    const isPlaying = video ? (!video.paused && !video.ended && video.readyState > 1) : false;
+    const isPlaying = video ? (!video.paused && !video.ended && video.readyState > 0) : false;
 
     return {
       title: title || '',
@@ -198,34 +229,55 @@
     };
   }
 
-  function sendTrackInfo() {
+  function sendTrackInfo(force = false) {
     if (!client || !isConnected) return;
     const data = getTrackData();
-    // Only send if we have at least a title or active video
-    if (!data.title && !data.isPlaying) return;
+
+    // If nothing is playing and no title exists, don't spam unless forced
+    if (!data.title && !data.isPlaying && !force) return;
 
     const payload = JSON.stringify(data);
     client.publish(`yt/overlay/${channelId}`, payload, { qos: 0, retain: true });
+    client.publish(`ytm/overlay/${channelId}`, payload, { qos: 0, retain: true });
   }
 
-  // Periodic updates
-  setInterval(sendTrackInfo, 1000);
+  // Periodic updates while tab is active
+  setInterval(() => sendTrackInfo(false), 800);
 
-  // Instant updates on play/pause/seek
-  function attachListeners() {
-    const video = document.querySelector('video');
-    if (video && !video.__yt_overlay_attached) {
-      video.__yt_overlay_attached = true;
-      video.addEventListener('play', sendTrackInfo);
-      video.addEventListener('pause', sendTrackInfo);
-      video.addEventListener('seeked', sendTrackInfo);
+  // Hook into video playback events & SPA navigation on YouTube
+  function attachVideoListeners() {
+    const video = document.querySelector('video.html5-main-video') ||
+                  document.querySelector('#movie_player video') ||
+                  document.querySelector('video');
+
+    if (video && !video.__yt_obs_attached) {
+      video.__yt_obs_attached = true;
+      video.addEventListener('play', () => sendTrackInfo(true));
+      video.addEventListener('pause', () => sendTrackInfo(true));
+      video.addEventListener('seeked', () => sendTrackInfo(true));
+      video.addEventListener('loadeddata', () => sendTrackInfo(true));
     }
   }
 
-  setInterval(attachListeners, 2000);
+  // Re-attach listeners on YouTube SPA navigation
+  window.addEventListener('yt-navigate-finish', () => {
+    setTimeout(() => {
+      attachVideoListeners();
+      sendTrackInfo(true);
+    }, 500);
+  });
+
+  document.addEventListener('spfdone', () => {
+    setTimeout(() => {
+      attachVideoListeners();
+      sendTrackInfo(true);
+    }, 500);
+  });
+
+  setInterval(attachVideoListeners, 1500);
 
   loadSettings(() => {
     initMQTT();
-    setTimeout(createBadge, 1500);
+    setTimeout(createBadge, 1000);
   });
 })();

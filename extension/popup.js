@@ -3,12 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const accentInput = document.getElementById('accent');
   const accentHex = document.getElementById('accent-hex');
   const autohideCheck = document.getElementById('autohide');
-  const channelInput = document.getElementById('channel');
   const copyBtn = document.getElementById('copy-btn');
   const statusEl = document.getElementById('status');
 
   // Load existing settings
-  chrome.storage.sync.get(['theme', 'accent', 'autohide', 'channelId'], (res) => {
+  chrome.storage.sync.get(['theme', 'accent', 'autohide'], (res) => {
     if (res) {
       if (res.theme) themeSelect.value = res.theme;
       if (res.accent) {
@@ -16,40 +15,53 @@ document.addEventListener('DOMContentLoaded', () => {
         accentHex.textContent = res.accent;
       }
       if (res.autohide !== undefined) autohideCheck.checked = res.autohide;
-      if (res.channelId) channelInput.value = res.channelId;
     }
   });
 
-  function saveSettings() {
+  function broadcastChange() {
     const theme = themeSelect.value;
     const accent = accentInput.value;
     const autohide = autohideCheck.checked;
-    const channelId = channelInput.value.trim() || 'yt-overlay';
 
     accentHex.textContent = accent;
 
-    chrome.storage.sync.set({ theme, accent, autohide, channelId }, () => {
-      statusEl.textContent = '✨ Synced to OBS in real-time!';
+    // Save to storage
+    chrome.storage.sync.set({ theme, accent, autohide }, () => {
+      statusEl.textContent = '✨ Theme synced to OBS!';
       setTimeout(() => {
         statusEl.textContent = '';
-      }, 2000);
+      }, 1500);
     });
+
+    // Send direct runtime message to any open YouTube/YTM tabs
+    if (chrome.tabs && chrome.tabs.query) {
+      chrome.tabs.query({ url: ["*://*.youtube.com/*", "*://youtube.com/*", "*://music.youtube.com/*"] }, (tabs) => {
+        if (tabs) {
+          tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'force_update',
+              theme,
+              accent,
+              autohide
+            }, () => {
+              if (chrome.runtime.lastError) {
+                // Tab might be in background or dormant
+              }
+            });
+          });
+        }
+      });
+    }
   }
 
-  themeSelect.addEventListener('change', saveSettings);
-  accentInput.addEventListener('input', saveSettings);
-  autohideCheck.addEventListener('change', saveSettings);
-  channelInput.addEventListener('input', saveSettings);
+  themeSelect.addEventListener('change', broadcastChange);
+  accentInput.addEventListener('input', broadcastChange);
+  autohideCheck.addEventListener('change', broadcastChange);
 
   copyBtn.addEventListener('click', () => {
-    const ch = channelInput.value.trim() || 'yt-overlay';
-    // Clean default link with zero query params if default channel!
-    const obsUrl = ch === 'yt-overlay'
-      ? `https://afterlight0338.github.io/yt-music-obs-overlay/overlay.html`
-      : `https://afterlight0338.github.io/yt-music-obs-overlay/overlay.html?channel=${encodeURIComponent(ch)}`;
-
-    navigator.clipboard.writeText(obsUrl);
-    statusEl.textContent = '✅ Copied OBS URL to clipboard!';
+    const localOverlayPath = `file:///home/afterlight/yt-music-obs-overlay/overlay.html`;
+    navigator.clipboard.writeText(localOverlayPath);
+    statusEl.textContent = '✅ Copied local OBS URL!';
     setTimeout(() => {
       statusEl.textContent = '';
     }, 2500);
