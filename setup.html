@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube & YT Music OBS Overlay — Setup & Theme Customizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="mqtt.min.js"></script>
+  <script>
+    if (typeof mqtt === 'undefined') {
+      const cdn = document.createElement('script');
+      cdn.src = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
+      document.head.appendChild(cdn);
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #0d0f17;
+      --card-bg: #161926;
+      --card-border: #262b3d;
+      --accent: #ff0055;
+      --accent-hover: #ff2b73;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --green: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(255, 0, 85, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(255, 0, 85, 0.3);
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #fff 30%, #ff5e94);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      background: #0d0f17;
+      border: 1px solid var(--card-border);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    .color-picker-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input[type="color"] {
+      border: none;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: none;
+      cursor: pointer;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 11px 20px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .btn:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #23283c;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #2e344e;
+    }
+
+    .code-box {
+      background: #090b10;
+      border: 1px solid #1e2333;
+      border-radius: 10px;
+      padding: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #93c5fd;
+      word-break: break-all;
+      position: relative;
+      margin-top: 8px;
+      user-select: all;
+    }
+
+    .preview-box {
+      position: relative;
+      height: 250px;
+      background: radial-gradient(circle at center, #1b2033 0%, #0c0e17 100%);
+      border: 1px dashed var(--card-border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      padding: 16px;
+    }
+
+    iframe#preview-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      pointer-events: none;
+    }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 13px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .step-content h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .step-content p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="badge">YouTube & YT Music • OBS Overlay</div>
+      <h1>Live Overlay Customizer</h1>
+      <p class="subtitle">Stream live video & music playback into OBS Studio with real-time dynamic theme switching.</p>
+    </header>
+
+    <div class="grid">
+      <!-- 1. Customize & URL -->
+      <div class="card">
+        <h2><span>🎨</span> 1. Pick Theme & Style</h2>
+        
+        <div class="form-group">
+          <label>Theme Style (Switches dynamically in OBS!)</label>
+          <select id="theme-select">
+            <option value="default">✨ Modern Glass Card (Default)</option>
+            <option value="compact">💊 Compact Floating Pill</option>
+            <option value="vinyl">💿 Retro Spinning Vinyl</option>
+            <option value="cyberpunk">🤖 Cyberpunk Neon HUD</option>
+            <option value="spotify">🟢 Spotify Clean Bar</option>
+            <option value="lofi">🌸 Lo-Fi Pastel Anime</option>
+            <option value="pixel">👾 Retro 8-Bit Pixel Arcade</option>
+            <option value="minimal">🪶 Ultra Minimal (Text Only)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Accent Glow Color</label>
+          <div class="color-picker-row">
+            <input type="color" id="accent-color" value="#ff0055" />
+            <span id="color-hex" style="font-family: monospace; font-size: 13px;">#ff0055</span>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 20px;">
+          <label>Your OBS Browser Source Link (No complex parameters needed!):</label>
+          <div class="code-box" id="obs-url-display">...</div>
+          <button class="btn btn-secondary" style="margin-top: 8px;" onclick="copyObsUrl()">📋 Copy OBS URL</button>
+        </div>
+      </div>
+
+      <!-- 2. Live Preview & Test -->
+      <div class="card">
+        <h2><span>👀</span> Live Preview</h2>
+        <div class="preview-box">
+          <iframe id="preview-frame" src=""></iframe>
+        </div>
+
+        <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button class="btn btn-secondary" onclick="sendTestTrack(true)">▶️ Test Song (Playing)</button>
+          <button class="btn btn-secondary" onclick="sendTestTrack(false)">⏸️ Test Pause</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Setup Guide -->
+    <div class="card">
+      <h2><span>🚀</span> Quick Setup Guide</h2>
+      
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h3>Load Extension into Browser (Zero Downloads)</h3>
+            <p>Go to <code>chrome://extensions</code> (or <code>edge://extensions</code>) &rarr; enable <b>Developer mode</b> &rarr; click <b>Load unpacked</b> &rarr; choose the <code>extension</code> folder.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h3>Add Browser Source in OBS Studio</h3>
+            <p>In OBS, click <b>+</b> under <b>Sources</b> &rarr; <b>Browser</b> &rarr; Paste your link &rarr; set Width <b>500</b>, Height <b>250</b>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h3>Play YouTube or YouTube Music!</h3>
+            <p>Open YouTube or YouTube Music. The overlay updates automatically in real-time!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const themeSelect = document.getElementById('theme-select');
+    const accentInput = document.getElementById('accent-color');
+    const obsUrlDisplay = document.getElementById('obs-url-display');
+    const previewFrame = document.getElementById('preview-frame');
+
+    function updateAll() {
+      const theme = themeSelect.value;
+      const accent = accentInput.value.replace('#', '');
+      document.getElementById('color-hex').textContent = '#' + accent;
+
+      const currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+      const overlayUrl = `${window.location.protocol}//${window.location.host}${currentPath}/overlay.html`;
+
+      obsUrlDisplay.textContent = overlayUrl;
+      previewFrame.src = overlayUrl;
+    }
+
+    themeSelect.addEventListener('change', () => {
+      updateAll();
+      sendTestTrack(true);
+    });
+    accentInput.addEventListener('input', () => {
+      updateAll();
+      sendTestTrack(true);
+    });
+
+    updateAll();
+
+    function copyObsUrl() {
+      navigator.clipboard.writeText(obsUrlDisplay.textContent);
+      alert("✅ OBS Overlay URL copied to clipboard!");
+    }
+
+    let testClient = null;
+    function sendTestTrack(playing) {
+      if (!testClient) {
+        testClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", { clean: true });
+      }
+      const theme = themeSelect.value;
+      const accent = accentInput.value;
+      const mockData = {
+        title: "Blinding Lights",
+        artist: "The Weeknd",
+        album: "After Hours",
+        artwork: "https://lh3.googleusercontent.com/uG_7F00C8lT0K22D9mOq1Z7v4e5qF8k5_0wH6X4aR1vC_5W1c4u-k=w544-h544-l90-rj",
+        currentTime: 92,
+        duration: 200,
+        isPlaying: playing,
+        theme: theme,
+        accent: accent,
+        autohide: true,
+        source: "ytmusic",
+        timestamp: Date.now()
+      };
+      testClient.publish("yt/overlay/yt-overlay", JSON.stringify(mockData), { retain: true });
+    }
+  </script>
+</body>
+</html>
