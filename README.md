@@ -13,7 +13,7 @@ Simple, zero-download OBS overlay for YouTube & YouTube Music with dynamic theme
 ### 2. Test & Customize in `setup.html`
 1. Open `setup.html` in your browser:
    ```text
-   file:///home/afterlight/yt-music-obs-overlay/setup.html
+   file:///path/to/file/yt-music-obs-overlay/setup.html
    ```
 2. The page includes:
    - **Live Song Detection & Diagnostics**: Shows real-time connection status and song details as soon as you play music.
@@ -26,9 +26,9 @@ Simple, zero-download OBS overlay for YouTube & YouTube Music with dynamic theme
 1. In OBS Studio, click **`+`** under **Sources** $\rightarrow$ select **Browser**.
 2. Check **Local file** and browse to select `overlay.html` (or enter the file path):
    ```text
-   file:///home/afterlight/yt-music-obs-overlay/overlay.html
+   file:///path/to/file/yt-music-obs-overlay/overlay.html
    ```
-3. Set **Width**: `500`, **Height**: `300`.
+3. Set **Width**: `500`, **Height**: `350`.
 4. Click **OK**.
 
 ---
