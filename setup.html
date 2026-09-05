@@ -17,6 +17,7 @@
       --text: #f3f4f6;
       --text-muted: #9ca3af;
       --green: #10b981;
+      --amber: #f59e0b;
     }
 
     * {
@@ -40,7 +41,7 @@
 
     header {
       text-align: center;
-      margin-bottom: 36px;
+      margin-bottom: 32px;
     }
 
     .badge {
@@ -55,6 +56,18 @@
       letter-spacing: 0.5px;
       text-transform: uppercase;
       margin-bottom: 12px;
+    }
+
+    .badge.connected {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .badge.connecting {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--amber);
+      border-color: rgba(245, 158, 11, 0.3);
     }
 
     h1 {
@@ -206,7 +219,6 @@
       width: 100%;
       height: 100%;
       border: none;
-      pointer-events: none;
     }
 
     .step-num {
@@ -245,6 +257,12 @@
       font-size: 13px;
       color: var(--text-muted);
     }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
   </style>
 </head>
 <body>
@@ -256,11 +274,60 @@
       <p class="subtitle">Stream live video & music playback into OBS Studio with real-time dynamic theme switching & Up Next queue.</p>
     </header>
 
+    <!-- Real-Time Detection & Status Diagnostics Card -->
+    <div class="card" style="margin-bottom: 24px; border-color: #3b4259;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+        <h2><span>📡</span> Live Song Detection & Diagnostics</h2>
+        <div id="broker-status-badge" class="badge connecting">
+          🟡 Connecting to Cloud Broker...
+        </div>
+      </div>
+
+      <!-- State 1: Idle (Waiting for detection) -->
+      <div id="detection-idle" style="display: block; padding: 18px; background: rgba(0,0,0,0.25); border-radius: 12px; border: 1px dashed var(--card-border);">
+        <div style="display: flex; align-items: flex-start; gap: 14px;">
+          <div style="font-size: 28px; line-height: 1;">🔍</div>
+          <div>
+            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">Waiting for Song Detection...</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">
+              Open <a href="https://music.youtube.com" target="_blank" style="color: var(--accent); text-decoration: underline; font-weight: 600;">music.youtube.com</a> or <a href="https://youtube.com" target="_blank" style="color: var(--accent); text-decoration: underline; font-weight: 600;">youtube.com</a> and play any song/video. Once detected, song details will appear here live!
+            </p>
+            <div style="display: flex; gap: 16px; font-size: 12px; color: #9ca3af; flex-wrap: wrap;">
+              <span>1️⃣ Extension loaded in <code>chrome://extensions</code></span>
+              <span>2️⃣ Music actively playing in browser tab</span>
+              <span>3️⃣ Badge in bottom-right of YouTube tab is 🟢</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State 2: Active (Live song detected) -->
+      <div id="detection-active" style="display: none; padding: 16px; background: rgba(16, 185, 129, 0.08); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <img id="detected-thumb" src="" alt="Album Art" style="width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 1.5s infinite;"></span>
+              <span style="font-size: 11px; font-weight: 800; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px;">Live Track Detected</span>
+              <span id="detected-source-badge" style="font-size: 11px; background: rgba(255,255,255,0.15); padding: 2px 8px; border-radius: 6px; color: #fff; font-weight: 700;">YouTube Music</span>
+            </div>
+            <div id="detected-title" style="font-size: 17px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            <div id="detected-artist" style="font-size: 14px; font-weight: 600; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            <div style="margin-top: 6px; display: flex; align-items: center; gap: 12px; font-size: 12px; color: #9ca3af; flex-wrap: wrap;">
+              <span id="detected-playback-state" style="font-weight: 600; color: #10b981;">▶️ Playing</span>
+              <span id="detected-time-info">0:00 / 0:00</span>
+              <span id="detected-last-seen" style="margin-left: auto; font-size: 11px; color: #6b7280;">Last signal: just now</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="grid">
       <!-- 1. Customize & URL -->
       <div class="card">
         <h2><span>🎨</span> 1. Pick Theme & Style</h2>
-        
+
         <div class="form-group">
           <label>Theme Style (Switches dynamically in OBS!)</label>
           <select id="theme-select">
@@ -313,7 +380,7 @@
           <div class="step-num">1</div>
           <div class="step-content">
             <h3>Load Extension into Browser (Zero Downloads)</h3>
-            <p>Go to <code>chrome://extensions</code> (or <code>edge://extensions</code>) &rarr; enable <b>Developer mode</b> &rarr; click <b>Load unpacked</b> &rarr; choose the <code>extension</code> folder.</p>
+            <p>Go to <code>chrome://extensions</code> (or <code>edge://extensions</code>) &rarr; enable <b>Developer mode</b> (top right toggle) &rarr; click <b>Load unpacked</b> &rarr; choose the <code>extension</code> folder from this project.</p>
           </div>
         </div>
 
@@ -321,7 +388,7 @@
           <div class="step-num">2</div>
           <div class="step-content">
             <h3>Add Browser Source in OBS Studio</h3>
-            <p>In OBS, click <b>+</b> under <b>Sources</b> &rarr; <b>Browser</b> &rarr; Check <b>Local file</b> &rarr; select <code>overlay.html</code> &rarr; set Width <b>500</b>, Height <b>300</b>.</p>
+            <p>In OBS Studio, click <b>+</b> under <b>Sources</b> &rarr; <b>Browser</b> &rarr; check <b>Local file</b> &rarr; select <code>overlay.html</code> (or paste the copied OBS File Link) &rarr; set Width <b>500</b>, Height <b>300</b>.</p>
           </div>
         </div>
 
@@ -329,7 +396,7 @@
           <div class="step-num">3</div>
           <div class="step-content">
             <h3>Play YouTube or YouTube Music!</h3>
-            <p>Play any video or playlist. The overlay updates automatically in real-time!</p>
+            <p>Open YouTube Music or YouTube in any tab and press play. The live song detector above will turn green, and your OBS overlay updates in real-time!</p>
           </div>
         </div>
       </div>
@@ -337,64 +404,110 @@
   </div>
 
   <script>
-    class NativeMQTTPublisher {
-      constructor(brokerUrl) {
-        this.brokerUrl = brokerUrl;
+    // Unified Native MQTT Client (Bidirectional Pub/Sub over WebSocket)
+    class NativeMQTTClient {
+      constructor(brokers, channelId, onMsg, onStatus) {
+        this.brokers = brokers;
+        this.brokerIdx = 0;
+        this.channelId = channelId;
+        this.onMsg = onMsg;
+        this.onStatus = onStatus;
         this.ws = null;
         this.connected = false;
+        this.pingTimer = null;
         this.connect();
       }
 
       connect() {
+        if (this.ws) {
+          try { this.ws.close(); } catch (e) {}
+        }
+        const brokerUrl = this.brokers[this.brokerIdx];
         try {
-          this.ws = new WebSocket(this.brokerUrl, ['mqtt']);
+          this.ws = new WebSocket(brokerUrl, ['mqtt']);
           this.ws.binaryType = 'arraybuffer';
         } catch (e) {
+          this.retry();
           return;
         }
 
         this.ws.onopen = () => {
-          const clientId = 'setup_pub_' + Math.random().toString(16).substring(2, 8);
-          const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54];
-          const version = 0x04;
-          const flags = 0x02;
-          const keepAlive = [0x00, 0x3c];
-          const clientIdBytes = new TextEncoder().encode(clientId);
-          const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
-          const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
-          
-          let x = payload.length;
-          const encodedLen = [];
-          do {
-            let digit = x % 128;
-            x = Math.floor(x / 128);
-            if (x > 0) digit = digit | 0x80;
-            encodedLen.push(digit);
-          } while (x > 0);
-
-          this.ws.send(new Uint8Array([0x10, ...encodedLen, ...payload]));
+          this.sendConnect();
         };
 
         this.ws.onmessage = (evt) => {
-          const buf = new Uint8Array(evt.data);
-          if (buf[0] >> 4 === 2) {
+          const data = new Uint8Array(evt.data);
+          const packetType = data[0] >> 4;
+          if (packetType === 2) { // CONNACK
             this.connected = true;
+            if (this.onStatus) this.onStatus(true, brokerUrl);
+            this.sendSubscribe([
+              `yt/overlay/${this.channelId}`,
+              `ytm/overlay/${this.channelId}`,
+              `yt/overlay/${this.channelId}/theme`,
+              `ytm/overlay/${this.channelId}/theme`
+            ]);
+            clearInterval(this.pingTimer);
+            this.pingTimer = setInterval(() => {
+              if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(new Uint8Array([0xc0, 0x00])); // PINGREQ
+              }
+            }, 25000);
+
+            // Publish currently active theme & accent on initial connection
+            const currentTheme = themeSelect ? themeSelect.value : 'default';
+            const currentAccent = accentInput ? accentInput.value : '#ff0055';
+            this.publishTheme(currentTheme, currentAccent);
+          } else if (packetType === 3) { // PUBLISH
+            let offset = 1;
+            let multiplier = 1;
+            let digit;
+            do {
+              digit = data[offset++];
+              multiplier *= 128;
+            } while ((digit & 128) !== 0 && offset < data.length);
+
+            const topicLen = (data[offset] << 8) | data[offset + 1];
+            offset += 2;
+            const topic = new TextDecoder().decode(data.subarray(offset, offset + topicLen));
+            offset += topicLen;
+            const payloadStr = new TextDecoder().decode(data.subarray(offset));
+            try {
+              const parsed = JSON.parse(payloadStr);
+              if (this.onMsg) this.onMsg(parsed, topic);
+            } catch (e) {}
           }
         };
 
         this.ws.onclose = () => {
           this.connected = false;
-          setTimeout(() => this.connect(), 3000);
+          clearInterval(this.pingTimer);
+          if (this.onStatus) this.onStatus(false, brokerUrl);
+          this.retry();
+        };
+
+        this.ws.onerror = () => {
+          this.connected = false;
         };
       }
 
-      publish(topic, messageStr) {
-        if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        const topicBytes = new TextEncoder().encode(topic);
-        const msgBytes = new TextEncoder().encode(messageStr);
-        const varLen = 2 + topicBytes.length + msgBytes.length;
+      retry() {
+        this.brokerIdx = (this.brokerIdx + 1) % this.brokers.length;
+        setTimeout(() => this.connect(), 3000);
+      }
+
+      sendConnect() {
+        const clientId = 'setup_cli_' + Math.random().toString(16).substring(2, 8);
+        const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54];
+        const version = 0x04;
+        const flags = 0x02;
+        const keepAlive = [0x00, 0x3c];
+        const clientIdBytes = new TextEncoder().encode(clientId);
+        const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
+        const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
+        
+        let x = payload.length;
         const encodedLen = [];
-        let x = varLen;
         do {
           let digit = x % 128;
           x = Math.floor(x / 128);
@@ -402,52 +515,246 @@
           encodedLen.push(digit);
         } while (x > 0);
 
-        const packet = new Uint8Array(1 + encodedLen.length + 2 + topicBytes.length + msgBytes.length);
-        let offset = 0;
-        packet[offset++] = 0x31; // retain = true
-        for (let b of encodedLen) packet[offset++] = b;
-        packet[offset++] = (topicBytes.length >> 8) & 0xff;
-        packet[offset++] = topicBytes.length & 0xff;
-        packet.set(topicBytes, offset);
-        offset += topicBytes.length;
-        packet.set(msgBytes, offset);
-        this.ws.send(packet);
+        this.ws.send(new Uint8Array([0x10, ...encodedLen, ...payload]));
+      }
+
+      sendSubscribe(topics) {
+        const packetId = [0x00, 0x01];
+        let payload = [...packetId];
+        for (const t of topics) {
+          const topicBytes = new TextEncoder().encode(t);
+          payload.push((topicBytes.length >> 8) & 0xff, topicBytes.length & 0xff, ...topicBytes, 0x00);
+        }
+        let x = payload.length;
+        const encodedLen = [];
+        do {
+          let digit = x % 128;
+          x = Math.floor(x / 128);
+          if (x > 0) digit = digit | 0x80;
+          encodedLen.push(digit);
+        } while (x > 0);
+
+        this.ws.send(new Uint8Array([0x82, ...encodedLen, ...payload]));
+      }
+
+      publish(topic, messageStr, retain = true) {
+        if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+        try {
+          const topicBytes = new TextEncoder().encode(topic);
+          const msgBytes = new TextEncoder().encode(messageStr);
+          const varLen = 2 + topicBytes.length + msgBytes.length;
+          const encodedLen = [];
+          let x = varLen;
+          do {
+            let digit = x % 128;
+            x = Math.floor(x / 128);
+            if (x > 0) digit = digit | 0x80;
+            encodedLen.push(digit);
+          } while (x > 0);
+
+          const packet = new Uint8Array(1 + encodedLen.length + 2 + topicBytes.length + msgBytes.length);
+          let offset = 0;
+          packet[offset++] = retain ? 0x31 : 0x30;
+          for (let b of encodedLen) packet[offset++] = b;
+          packet[offset++] = (topicBytes.length >> 8) & 0xff;
+          packet[offset++] = topicBytes.length & 0xff;
+          packet.set(topicBytes, offset);
+          offset += topicBytes.length;
+          packet.set(msgBytes, offset);
+          this.ws.send(packet);
+          return true;
+        } catch (e) {
+          console.warn('Publish error:', e);
+          return false;
+        }
+      }
+
+      publishTheme(theme, accent) {
+        const payload = JSON.stringify({ theme, accent });
+        this.publish(`yt/overlay/${this.channelId}/theme`, payload, true);
+        this.publish(`ytm/overlay/${this.channelId}/theme`, payload, true);
       }
     }
-
-    const testPublisher = new NativeMQTTPublisher('wss://broker.emqx.io:8084/mqtt');
 
     const themeSelect = document.getElementById('theme-select');
     const accentInput = document.getElementById('accent-color');
     const obsUrlDisplay = document.getElementById('obs-url-display');
     const previewFrame = document.getElementById('preview-frame');
+    const brokerBadge = document.getElementById('broker-status-badge');
+    const detectionIdle = document.getElementById('detection-idle');
+    const detectionActive = document.getElementById('detection-active');
 
-    function updateAll() {
-      const theme = themeSelect.value;
-      const accent = accentInput.value.replace('#', '');
-      document.getElementById('color-hex').textContent = '#' + accent;
+    const detectedThumb = document.getElementById('detected-thumb');
+    const detectedTitle = document.getElementById('detected-title');
+    const detectedArtist = document.getElementById('detected-artist');
+    const detectedState = document.getElementById('detected-playback-state');
+    const detectedTimeInfo = document.getElementById('detected-time-info');
+    const detectedSourceBadge = document.getElementById('detected-source-badge');
+    const detectedLastSeen = document.getElementById('detected-last-seen');
 
-      const currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-      const overlayUrl = `${window.location.protocol}//${window.location.host}${currentPath}/overlay.html`;
-
-      obsUrlDisplay.textContent = overlayUrl;
-      previewFrame.src = overlayUrl;
+    // Restore saved user preferences from localStorage
+    const savedTheme = localStorage.getItem('yt_obs_theme');
+    if (savedTheme) themeSelect.value = savedTheme;
+    const savedAccent = localStorage.getItem('yt_obs_accent');
+    if (savedAccent) {
+      accentInput.value = savedAccent;
+      document.getElementById('color-hex').textContent = savedAccent;
     }
 
-    themeSelect.addEventListener('change', () => {
-      updateAll();
-      sendTestTrack(true, false);
-    });
-    accentInput.addEventListener('input', () => {
-      updateAll();
-      sendTestTrack(true, false);
+    let lastDetectedTime = null;
+    let lastTrackData = null;
+
+    function formatTime(sec) {
+      if (isNaN(sec) || sec < 0) return '0:00';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    function onLiveSongReceived(data, topic) {
+      if (!data) return;
+
+      // Handle dedicated theme synchronization packet
+      if (topic && topic.endsWith('/theme')) {
+        let changed = false;
+        if (data.theme && themeSelect.value !== data.theme) {
+          themeSelect.value = data.theme;
+          localStorage.setItem('yt_obs_theme', data.theme);
+          changed = true;
+        }
+        if (data.accent && accentInput.value !== data.accent) {
+          accentInput.value = data.accent;
+          document.getElementById('color-hex').textContent = data.accent;
+          localStorage.setItem('yt_obs_accent', data.accent);
+          changed = true;
+        }
+        if (changed) {
+          updateStyle(false); // Update local preview without re-publishing
+        }
+        return;
+      }
+
+      if (!data.title) return;
+      lastTrackData = data;
+      lastDetectedTime = Date.now();
+
+      detectionIdle.style.display = 'none';
+      detectionActive.style.display = 'block';
+
+      detectedTitle.textContent = data.title;
+      detectedArtist.textContent = data.artist || (data.source === 'ytmusic' ? 'YouTube Music' : 'YouTube');
+      
+      const fallbackArt = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 24 24' fill='%23333'%3E%3Crect width='24' height='24' rx='6' fill='%231e2333'/%3E%3Cpath d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z' fill='%23ff0055'/%3E%3C/svg%3E";
+      detectedThumb.onerror = () => { detectedThumb.src = fallbackArt; };
+      detectedThumb.src = data.artwork || fallbackArt;
+      detectedSourceBadge.textContent = data.source === 'ytmusic' ? 'YouTube Music' : 'YouTube';
+
+      if (data.isPlaying) {
+        detectedState.textContent = '▶️ Playing';
+        detectedState.style.color = '#10b981';
+      } else {
+        detectedState.textContent = '⏸️ Paused';
+        detectedState.style.color = '#f59e0b';
+      }
+
+      detectedTimeInfo.textContent = `${formatTime(data.currentTime)} / ${formatTime(data.duration)}`;
+      detectedLastSeen.textContent = 'Last signal: just now';
+
+      // Forward to preview iframe directly with the current user-selected theme
+      if (previewFrame.contentWindow) {
+        const previewData = Object.assign({}, data, {
+          theme: themeSelect.value,
+          accent: accentInput.value,
+          autohide: false
+        });
+        previewFrame.contentWindow.postMessage(previewData, '*');
+      }
+    }
+
+    setInterval(() => {
+      if (lastDetectedTime) {
+        const diffSec = Math.floor((Date.now() - lastDetectedTime) / 1000);
+        if (diffSec < 3) {
+          detectedLastSeen.textContent = 'Last signal: just now';
+        } else {
+          detectedLastSeen.textContent = `Last signal: ${diffSec}s ago`;
+        }
+      }
+    }, 1000);
+
+    // Initialize Unified Client (Subscribes to song & theme, Publishes theme updates)
+    const brokers = [
+      'wss://broker.emqx.io:8084/mqtt',
+      'wss://broker.hivemq.com:8884/mqtt'
+    ];
+
+    const mqttClient = new NativeMQTTClient(brokers, 'yt-overlay', onLiveSongReceived, (connected, brokerUrl) => {
+      if (connected) {
+        const name = brokerUrl.includes('emqx') ? 'EMQX Cloud' : 'HiveMQ Cloud';
+        brokerBadge.textContent = `🟢 Cloud Broker Connected (${name})`;
+        brokerBadge.className = 'badge connected';
+      } else {
+        brokerBadge.textContent = '🟡 Connecting to Cloud Broker...';
+        brokerBadge.className = 'badge connecting';
+      }
     });
 
-    updateAll();
+    function getOverlayUrl() {
+      const currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+      return `${window.location.protocol}//${window.location.host}${currentPath}/overlay.html`;
+    }
+
+    function updateObsUrl() {
+      const url = getOverlayUrl();
+      obsUrlDisplay.textContent = url;
+      return url;
+    }
+
+    // Set initial iframe src once
+    const initialOverlayUrl = updateObsUrl();
+    previewFrame.src = initialOverlayUrl;
+
+    function updateStyle(shouldPublish = true) {
+      const theme = themeSelect.value;
+      const accent = accentInput.value;
+      document.getElementById('color-hex').textContent = accent;
+
+      localStorage.setItem('yt_obs_theme', theme);
+      localStorage.setItem('yt_obs_accent', accent);
+
+      // 1. Immediately update local preview frame
+      if (lastTrackData) {
+        const previewData = Object.assign({}, lastTrackData, {
+          theme: theme,
+          accent: accent,
+          autohide: false
+        });
+        if (previewFrame.contentWindow) {
+          previewFrame.contentWindow.postMessage(previewData, '*');
+        }
+      } else {
+        if (previewFrame.contentWindow) {
+          previewFrame.contentWindow.postMessage({ theme, accent, autohide: false }, '*');
+        }
+      }
+
+      // 2. Broadcast to OBS dynamically via MQTT!
+      if (shouldPublish && mqttClient) {
+        mqttClient.publishTheme(theme, accent);
+        if (lastTrackData) {
+          const updatedTrack = Object.assign({}, lastTrackData, { theme, accent });
+          mqttClient.publish('yt/overlay/yt-overlay', JSON.stringify(updatedTrack), true);
+          mqttClient.publish('ytm/overlay/yt-overlay', JSON.stringify(updatedTrack), true);
+        }
+      }
+    }
+
+    themeSelect.addEventListener('change', () => updateStyle(true));
+    accentInput.addEventListener('input', () => updateStyle(true));
 
     function copyObsUrl() {
       navigator.clipboard.writeText(obsUrlDisplay.textContent);
-      alert("✅ OBS Overlay URL copied to clipboard!");
+      alert("✅ OBS Overlay URL copied to clipboard!\n\nPaste this into OBS Browser Source -> Local File or URL.");
     }
 
     function sendTestTrack(playing, withUpcoming) {
@@ -460,7 +767,7 @@
       ] : [];
 
       const mockData = {
-        title: "Blinding Lights",
+        title: "Blinding Lights (Test)",
         artist: "The Weeknd",
         album: "After Hours",
         artwork: "https://lh3.googleusercontent.com/uG_7F00C8lT0K22D9mOq1Z7v4e5qF8k5_0wH6X4aR1vC_5W1c4u-k=w544-h544-l90-rj",
@@ -470,13 +777,22 @@
         upcoming: upcoming,
         theme: theme,
         accent: accent,
-        autohide: true,
+        autohide: false, // Don't hide in setup preview
         source: "ytmusic",
         timestamp: Date.now()
       };
 
-      testPublisher.publish("yt/overlay/yt-overlay", JSON.stringify(mockData));
+      // Only post to preview frame for local preview testing.
+      // We do NOT broadcast mock data to the cloud broker so we don't overwrite live songs in OBS!
+      if (previewFrame.contentWindow) {
+        previewFrame.contentWindow.postMessage(mockData, '*');
+      }
     }
+
+    // When preview iframe finishes loading, forward real song data or style
+    previewFrame.addEventListener('load', () => {
+      updateStyle(false);
+    });
   </script>
 </body>
 </html>

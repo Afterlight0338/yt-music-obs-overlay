@@ -1,150 +1,32 @@
 /**
  * YouTube & YouTube Music OBS Broadcaster - Content Script
- * Pure native WebSocket implementation (Zero WebWorkers / Zero Blob URLs / 100% CSP Safe)
+ * Captures live playback metadata and sends it to the extension background service worker
  */
 (function () {
   console.log('[YT-OBS] Overlay broadcaster initialized on:', window.location.hostname);
 
-  // Minimal Native WebSocket MQTT v3.1.1 Client (Zero dependencies, Zero blob workers)
-  class NativeMQTTClient {
-    constructor(brokers, channelId) {
-      this.brokers = brokers;
-      this.brokerIdx = 0;
-      this.channelId = channelId;
-      this.ws = null;
-      this.connected = false;
-      this.pingTimer = null;
-      this.reconnectTimer = null;
-      this.connect();
-    }
-
-    connect() {
-      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-      if (this.ws) {
-        try { this.ws.close(); } catch (e) {}
-      }
-
-      const brokerUrl = this.brokers[this.brokerIdx];
-      try {
-        this.ws = new WebSocket(brokerUrl, ['mqtt']);
-        this.ws.binaryType = 'arraybuffer';
-      } catch (e) {
-        console.warn('[YT-OBS] WebSocket creation error:', e);
-        this.retry();
-        return;
-      }
-
-      this.ws.onopen = () => {
-        this.sendConnect();
-      };
-
-      this.ws.onmessage = (evt) => {
-        const data = new Uint8Array(evt.data);
-        const packetType = data[0] >> 4;
-        if (packetType === 2) { // CONNACK
-          this.connected = true;
-          console.log('[YT-OBS] Connected to MQTT broker!');
-          if (this.onConnect) this.onConnect();
-
-          // Heartbeat ping every 30 seconds
-          clearInterval(this.pingTimer);
-          this.pingTimer = setInterval(() => {
-            if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
-              this.ws.send(new Uint8Array([0xc0, 0x00])); // PINGREQ
-            }
-          }, 30000);
-        }
-      };
-
-      this.ws.onclose = () => {
-        this.connected = false;
-        clearInterval(this.pingTimer);
-        if (this.onClose) this.onClose();
-        this.retry();
-      };
-
-      this.ws.onerror = (err) => {
-        this.connected = false;
-      };
-    }
-
-    retry() {
-      this.brokerIdx = (this.brokerIdx + 1) % this.brokers.length;
-      this.reconnectTimer = setTimeout(() => this.connect(), 3000);
-    }
-
-    sendConnect() {
-      const clientId = 'yt_send_' + Math.random().toString(16).substring(2, 8);
-      const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54]; // "MQTT" (3.1.1)
-      const version = 0x04; // 3.1.1
-      const flags = 0x02; // Clean Session
-      const keepAlive = [0x00, 0x3c]; // 60s
-
-      const clientIdBytes = new TextEncoder().encode(clientId);
-      const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
-
-      const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
-      
-      let x = payload.length;
-      const encodedLen = [];
-      do {
-        let digit = x % 128;
-        x = Math.floor(x / 128);
-        if (x > 0) digit = digit | 0x80;
-        encodedLen.push(digit);
-      } while (x > 0);
-
-      const packet = new Uint8Array([0x10, ...encodedLen, ...payload]);
-      this.ws.send(packet);
-    }
-
-    publish(topic, messageStr, retain = true) {
-      if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-      const topicBytes = new TextEncoder().encode(topic);
-      const msgBytes = new TextEncoder().encode(messageStr);
-
-      const varLen = 2 + topicBytes.length + msgBytes.length;
-      const encodedLen = [];
-      let x = varLen;
-      do {
-        let digit = x % 128;
-        x = Math.floor(x / 128);
-        if (x > 0) digit = digit | 0x80;
-        encodedLen.push(digit);
-      } while (x > 0);
-
-      const packet = new Uint8Array(1 + encodedLen.length + 2 + topicBytes.length + msgBytes.length);
-      let offset = 0;
-      packet[offset++] = 0x30 | (retain ? 0x01 : 0x00);
-      for (let b of encodedLen) packet[offset++] = b;
-      packet[offset++] = (topicBytes.length >> 8) & 0xff;
-      packet[offset++] = topicBytes.length & 0xff;
-      packet.set(topicBytes, offset);
-      offset += topicBytes.length;
-      packet.set(msgBytes, offset);
-
-      this.ws.send(packet);
-    }
-  }
-
-  let channelId = 'yt-overlay';
+  const CHANNEL_ID = 'yt-overlay';
   let theme = 'default';
   let accent = '#ff0055';
   let autohide = true;
   let upcomingCount = 3;
-  let client = null;
+  let isWorkerConnected = false;
+  let lastTrackData = null;
 
-  const brokers = [
-    'wss://broker.emqx.io:8084/mqtt',
-    'wss://broker.hivemq.com:8884/mqtt'
-  ];
+  // Cached metadata from injected MAIN world script (navigator.mediaSession)
+  let cachedMediaSession = null;
+
+  window.addEventListener('__yt_obs_media_update', (e) => {
+    if (e.detail) {
+      cachedMediaSession = e.detail;
+      sendTrackInfo(true);
+    }
+  });
 
   function loadSettings(cb) {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get(['channelId', 'theme', 'accent', 'autohide', 'upcomingCount'], (res) => {
+      chrome.storage.sync.get(['theme', 'accent', 'autohide', 'upcomingCount'], (res) => {
         if (res) {
-          if (res.channelId) channelId = res.channelId;
           if (res.theme) theme = res.theme;
           if (res.accent) accent = res.accent;
           if (res.autohide !== undefined) autohide = res.autohide;
@@ -160,13 +42,12 @@
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'sync') {
-        if (changes.channelId) channelId = changes.channelId.newValue || 'yt-overlay';
         if (changes.theme) theme = changes.theme.newValue || 'default';
         if (changes.accent) accent = changes.accent.newValue || '#ff0055';
         if (changes.autohide !== undefined) autohide = changes.autohide.newValue;
         if (changes.upcomingCount !== undefined) upcomingCount = parseInt(changes.upcomingCount.newValue, 10);
 
-        createBadge();
+        updateBadge();
         sendTrackInfo(true);
       }
     });
@@ -185,7 +66,7 @@
     });
   }
 
-  function createBadge() {
+  function updateBadge() {
     let badge = document.getElementById('yt-obs-status-badge');
     if (!badge) {
       badge = document.createElement('div');
@@ -210,17 +91,28 @@
         box-shadow: 0 4px 16px rgba(0,0,0,0.4);
         cursor: pointer;
         user-select: none;
+        transition: transform 0.2s ease;
       `;
+      badge.onmouseover = () => { badge.style.transform = 'scale(1.05)'; };
+      badge.onmouseout = () => { badge.style.transform = 'scale(1)'; };
       badge.onclick = () => {
-        alert(`📡 OBS Overlay Active\n\nPlatform: ${window.location.hostname}\nTheme: ${theme}\nStatus: ${client && client.connected ? '🟢 Connected to OBS' : '🟡 Connecting...'}`);
+        const title = lastTrackData?.title || '(None detected yet)';
+        const artist = lastTrackData?.artist || '(None)';
+        const isYTM = window.location.hostname.includes('music.youtube.com');
+        alert(`📡 OBS Overlay Broadcaster\n\n` +
+              `Status: ${isWorkerConnected ? '🟢 Connected to Cloud Broker' : '🟡 Connecting to Cloud Broker...'}\n` +
+              `Platform: ${isYTM ? 'YouTube Music' : 'YouTube'} (Auto-detected)\n` +
+              `Current Song: ${title}\n` +
+              `Artist: ${artist}\n` +
+              `Channel: ${CHANNEL_ID} (Universal)`);
       };
       document.body.appendChild(badge);
     }
 
-    const isConn = client && client.connected;
+    const isYTM = window.location.hostname.includes('music.youtube.com');
     badge.innerHTML = `
-      <span style="width: 7px; height: 7px; border-radius: 50%; background: ${isConn ? '#10b981' : '#f59e0b'}; display: inline-block;"></span>
-      <span>OBS: ${theme}</span>
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: ${isWorkerConnected ? '#10b981' : '#f59e0b'}; display: inline-block;"></span>
+      <span>${isYTM ? 'YT Music' : 'YouTube'}</span>
     `;
   }
 
@@ -279,20 +171,46 @@
     let artwork = '';
 
     if (isYTM) {
-      const titleEl = document.querySelector('ytmusic-player-bar .title');
-      const bylineEl = document.querySelector('ytmusic-player-bar .byline');
-      const imgEl = document.querySelector('ytmusic-player-bar .image');
+      // 1. Check title from mediaSession or DOM elements
+      const titleEl = document.querySelector('ytmusic-player-bar .title') ||
+                      document.querySelector('ytmusic-player-bar yt-formatted-string.title') ||
+                      document.querySelector('ytmusic-player-bar [title]');
 
-      title = (titleEl ? titleEl.textContent.trim() : '') || (navigator.mediaSession?.metadata?.title || '');
-      artist = (bylineEl ? bylineEl.textContent.trim() : '') || (navigator.mediaSession?.metadata?.artist || '');
-      album = navigator.mediaSession?.metadata?.album || 'YouTube Music';
+      title = (titleEl ? (titleEl.getAttribute('title') || titleEl.textContent || '').trim() : '') ||
+              (cachedMediaSession?.title || '');
 
-      if (imgEl && imgEl.src) {
+      // 2. Check artist from mediaSession or DOM elements
+      const bylineEl = document.querySelector('ytmusic-player-bar .byline') ||
+                       document.querySelector('ytmusic-player-bar yt-formatted-string.byline') ||
+                       document.querySelector('ytmusic-player-bar .subtitle yt-formatted-string');
+
+      if (bylineEl) {
+        const link = bylineEl.querySelector('a');
+        artist = link ? link.textContent.trim() : bylineEl.textContent.trim();
+        // Remove trailing album/views info if in single string: e.g. "Artist • Album • 2024"
+        if (artist.includes(' • ')) {
+          artist = artist.split(' • ')[0].trim();
+        }
+      }
+      if (!artist && cachedMediaSession?.artist) {
+        artist = cachedMediaSession.artist;
+      }
+
+      album = cachedMediaSession?.album || 'YouTube Music';
+
+      // 3. Artwork from mediaSession or DOM thumbnail
+      const imgEl = document.querySelector('ytmusic-player-bar yt-img-shadow img') ||
+                    document.querySelector('ytmusic-player-bar .image img') ||
+                    document.querySelector('ytmusic-player-bar img#img') ||
+                    document.querySelector('#song-image img');
+
+      if (cachedMediaSession?.artwork) {
+        artwork = cachedMediaSession.artwork;
+      } else if (imgEl && imgEl.src && !imgEl.src.startsWith('data:')) {
         artwork = imgEl.src;
-      } else if (navigator.mediaSession?.metadata?.artwork?.length > 0) {
-        artwork = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
       }
     } else {
+      // YouTube video mode
       const ytTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string') ||
                         document.querySelector('h1.ytd-watch-metadata yt-formatted-string') ||
                         document.querySelector('ytd-watch-metadata h1') ||
@@ -306,13 +224,13 @@
                           document.querySelector('#upload-info #channel-name a') ||
                           document.querySelector('ytd-video-owner-renderer #channel-name a');
 
-      title = ytTitleEl ? ytTitleEl.textContent.trim() : '';
+      title = ytTitleEl ? ytTitleEl.textContent.trim() : (cachedMediaSession?.title || '');
       if (!title) {
         const docTitle = document.title || '';
         title = docTitle.replace(' - YouTube', '').replace(/^\(\d+\)\s*/, '').trim();
       }
 
-      artist = ytChannelEl ? ytChannelEl.textContent.trim() : 'YouTube';
+      artist = ytChannelEl ? ytChannelEl.textContent.trim() : (cachedMediaSession?.artist || 'YouTube');
       album = 'YouTube';
 
       const vParam = new URLSearchParams(window.location.search).get('v');
@@ -325,14 +243,28 @@
         }
       }
 
-      if (!artwork && navigator.mediaSession?.metadata?.artwork?.length > 0) {
-        artwork = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
+      if (!artwork && cachedMediaSession?.artwork) {
+        artwork = cachedMediaSession.artwork;
       }
     }
 
     const currentTime = video ? video.currentTime : 0;
     const duration = video && !isNaN(video.duration) ? video.duration : 0;
-    const isPlaying = video ? (!video.paused && !video.ended && video.readyState > 0) : false;
+
+    // Detect playing state with video and play button fallback
+    let isPlaying = video ? (!video.paused && !video.ended && video.readyState > 0) : false;
+    const playBtn = document.querySelector('ytmusic-player-bar #play-pause-button') ||
+                    document.querySelector('#play-pause-button') ||
+                    document.querySelector('.ytp-play-button');
+    if (playBtn) {
+      const label = (playBtn.getAttribute('title') || playBtn.getAttribute('aria-label') || '').toLowerCase();
+      if (label.includes('pause')) {
+        isPlaying = true;
+      } else if (label.includes('play')) {
+        isPlaying = false;
+      }
+    }
+
     const upcoming = getUpcomingTracks(upcomingCount);
 
     return {
@@ -353,15 +285,35 @@
   }
 
   function sendTrackInfo(force = false) {
-    if (!client || !client.connected) return;
     const data = getTrackData();
     if (!data.title && !force) return;
 
-    const payload = JSON.stringify(data);
-    client.publish(`yt/overlay/${channelId}`, payload, true);
-    client.publish(`ytm/overlay/${channelId}`, payload, true);
+    lastTrackData = data;
+
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      try {
+        chrome.runtime.sendMessage({
+          action: 'track_update',
+          data: data
+        }, (res) => {
+          if (chrome.runtime.lastError) {
+            isWorkerConnected = false;
+            updateBadge();
+            return;
+          }
+          if (res) {
+            isWorkerConnected = !!res.connected;
+            updateBadge();
+          }
+        });
+      } catch (e) {
+        isWorkerConnected = false;
+        updateBadge();
+      }
+    }
   }
 
+  // Poll regularly while tab is active
   setInterval(() => sendTrackInfo(false), 800);
 
   function attachVideoListeners() {
@@ -394,15 +346,12 @@
 
   setInterval(attachVideoListeners, 1500);
 
+  // Initial load
   loadSettings(() => {
-    client = new NativeMQTTClient(brokers, channelId);
-    client.onConnect = () => {
-      createBadge();
+    updateBadge();
+    setTimeout(() => {
+      attachVideoListeners();
       sendTrackInfo(true);
-    };
-    client.onClose = () => {
-      createBadge();
-    };
-    setTimeout(createBadge, 1000);
+    }, 500);
   });
 })();

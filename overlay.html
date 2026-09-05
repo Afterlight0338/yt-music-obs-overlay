@@ -650,7 +650,7 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const channelId = params.get('channel') || 'yt-overlay';
+    const channelId = 'yt-overlay';
     const forcedTheme = params.get('theme');
     let autohide = params.get('autohide') !== 'false';
 
@@ -751,20 +751,43 @@
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    function updateState(data) {
-      if (!data || !data.title) {
-        if (autohide) container.classList.remove('visible');
+    let activeTheme = null;
+    let activeAccent = null;
+
+    function updateState(data, topic) {
+      if (!data) return;
+
+      // Handle dedicated theme packet from MQTT topic
+      if (topic && topic.endsWith('/theme')) {
+        if (data.theme && !forcedTheme) {
+          activeTheme = data.theme;
+          applyTheme(data.theme);
+        }
+        if (data.accent && !params.get('accent')) {
+          activeAccent = data.accent;
+          setAccent(data.accent);
+        }
         return;
       }
 
+      // Handle track data packet
       if (data.theme && !forcedTheme) {
-        applyTheme(data.theme);
+        if (!activeTheme) {
+          applyTheme(data.theme);
+        }
       }
       if (data.accent && !params.get('accent')) {
-        setAccent(data.accent);
+        if (!activeAccent) {
+          setAccent(data.accent);
+        }
       }
       if (data.autohide !== undefined && !params.get('autohide')) {
         autohide = data.autohide;
+      }
+
+      if (!data.title) {
+        if (autohide) container.classList.remove('visible');
+        return;
       }
 
       currentTrack = data;
@@ -794,6 +817,9 @@
           hideTimeout = setTimeout(() => {
             if (!isPlaying) container.classList.remove('visible');
           }, 4000);
+        } else {
+          if (hideTimeout) clearTimeout(hideTimeout);
+          container.classList.add('visible');
         }
       }
 
@@ -850,7 +876,12 @@
           const packetType = data[0] >> 4;
           if (packetType === 2) { // CONNACK
             this.connected = true;
-            this.sendSubscribe([`yt/overlay/${this.channelId}`, `ytm/overlay/${this.channelId}`]);
+            this.sendSubscribe([
+              `yt/overlay/${this.channelId}`,
+              `ytm/overlay/${this.channelId}`,
+              `yt/overlay/${this.channelId}/theme`,
+              `ytm/overlay/${this.channelId}/theme`
+            ]);
             clearInterval(this.pingTimer);
             this.pingTimer = setInterval(() => {
               if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -873,7 +904,7 @@
             const payloadStr = new TextDecoder().decode(data.subarray(offset));
             try {
               const parsed = JSON.parse(payloadStr);
-              if (this.onMsg) this.onMsg(parsed);
+              if (this.onMsg) this.onMsg(parsed, topic);
             } catch (e) {}
           }
         };
@@ -943,7 +974,27 @@
       'wss://broker.hivemq.com:8884/mqtt'
     ];
 
-    new NativeMQTTSubscriber(brokers, channelId, updateState);
+    // If inside an iframe (like setup.html preview), do NOT connect to MQTT directly.
+    // Parent window forwards track and theme data cleanly via postMessage.
+    const isIframe = window.self !== window.top;
+    if (!isIframe) {
+      new NativeMQTTSubscriber(brokers, channelId, updateState);
+    }
+
+    // Support direct parent-window communication (for setup.html preview)
+    window.addEventListener('message', (evt) => {
+      if (evt.data && typeof evt.data === 'object') {
+        if (evt.data.theme && !forcedTheme) {
+          activeTheme = evt.data.theme;
+          applyTheme(evt.data.theme);
+        }
+        if (evt.data.accent && !params.get('accent')) {
+          activeAccent = evt.data.accent;
+          setAccent(evt.data.accent);
+        }
+        updateState(evt.data);
+      }
+    });
   </script>
 </body>
 </html>

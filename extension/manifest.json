@@ -1,18 +1,21 @@
 {
   "manifest_version": 3,
   "name": "YouTube & YT Music OBS Overlay Broadcaster",
-  "version": "1.3.0",
+  "version": "1.4.1",
   "description": "Streams live now-playing video and song info from YouTube & YouTube Music to OBS Studio",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "https://*.youtube.com/*",
-    "https://youtube.com/*",
-    "https://music.youtube.com/*",
-    "wss://broker.emqx.io/*",
-    "wss://broker.hivemq.com/*"
+    "*://*.youtube.com/*",
+    "*://youtube.com/*",
+    "*://music.youtube.com/*",
+    "*://broker.emqx.io/*",
+    "*://broker.hivemq.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "OBS Overlay Settings"
@@ -20,9 +23,19 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.youtube.com/*",
-        "https://youtube.com/*",
-        "https://music.youtube.com/*"
+        "*://*.youtube.com/*",
+        "*://youtube.com/*",
+        "*://music.youtube.com/*"
+      ],
+      "js": ["injected.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtube.com/*",
+        "*://music.youtube.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"

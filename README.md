@@ -1,28 +1,39 @@
 # yt-music-obs-overlay
-simple vibecoded overlay for yt music
-simply because i want something that just works without having to do this and that
+Simple, zero-download OBS overlay for YouTube & YouTube Music with dynamic theme switching.
 
-## How to Use (100% Local / Zero Downloads)
+## How to Use
 
 ### 1. Load the Extension in your Browser
 1. In your browser (Chrome, Brave, Edge, Opera), navigate to `chrome://extensions` (or `edge://extensions`).
 2. Turn on **Developer mode** (toggle in top-right).
-3. Click **Load unpacked** (top-left) and select the `extension` folder from this repository.
+3. If you previously loaded the extension, click the 🔄 **Reload** icon on the extension card. Otherwise, click **Load unpacked** (top-left) and select the `extension` folder from this repository.
 
 ---
 
-### 2. Add Browser Source in OBS Studio
+### 2. Test & Customize in `setup.html`
+1. Open `setup.html` in your browser:
+   ```text
+   file:///home/afterlight/yt-music-obs-overlay/setup.html
+   ```
+2. The page includes:
+   - **Live Song Detection & Diagnostics**: Shows real-time connection status and song details as soon as you play music.
+   - **Live Theme Preview**: Switch between Modern Glass, Compact Pill, Spinning Vinyl, Cyberpunk HUD, Spotify Bar, Lo-Fi Anime, Retro Pixel, and Ultra Minimal.
+   - **Test Buttons**: Test song and Up Next queue with a single click.
+
+---
+
+### 3. Add Browser Source in OBS Studio
 1. In OBS Studio, click **`+`** under **Sources** $\rightarrow$ select **Browser**.
 2. Check **Local file** and browse to select `overlay.html` (or enter the file path):
    ```text
-   file:///path/to/yt-music-obs-overlay/overlay.html
+   file:///home/afterlight/yt-music-obs-overlay/overlay.html
    ```
-3. Set **Width**: `500`, **Height**: `250`.
+3. Set **Width**: `500`, **Height**: `300`.
 4. Click **OK**.
 
 ---
 
-### 3. Play & Customize in Real Time!
-1. Open **YouTube** (`youtube.com`) or **YouTube Music** (`music.youtube.com`) and play any video or song.
-2. Click the extension icon in your browser toolbar to choose any theme (**Modern Glass**, **Compact Pill**, **Spinning Vinyl**, **Cyberpunk HUD**, **Spotify Bar**, **Lo-Fi Anime**, **Retro 8-Bit Pixel**, **Ultra Minimal**) or custom accent colors.
-3. **Themes change dynamically in real-time in OBS** — you never need to edit or change the link in OBS!
+### 4. Play & Enjoy!
+1. Open **YouTube Music** (`music.youtube.com`) or **YouTube** (`youtube.com`) and play any video or song.
+2. A green status indicator (`🟢 OBS: Theme`) appears at the bottom-right of the YouTube tab.
+3. Song title, artist, album artwork, and playback progress stream live into OBS Studio!
