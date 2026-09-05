@@ -29,7 +29,7 @@
         this.ws = new WebSocket(brokerUrl, ['mqtt']);
         this.ws.binaryType = 'arraybuffer';
       } catch (e) {
-        console.warn('[YT-OBS] WebSocket error, retrying:', e);
+        console.warn('[YT-OBS] WebSocket creation error:', e);
         this.retry();
         return;
       }
@@ -43,6 +43,7 @@
         const packetType = data[0] >> 4;
         if (packetType === 2) { // CONNACK
           this.connected = true;
+          console.log('[YT-OBS] Connected to MQTT broker!');
           if (this.onConnect) this.onConnect();
 
           // Heartbeat ping every 30 seconds
@@ -62,7 +63,7 @@
         this.retry();
       };
 
-      this.ws.onerror = () => {
+      this.ws.onerror = (err) => {
         this.connected = false;
       };
     }
@@ -74,7 +75,7 @@
 
     sendConnect() {
       const clientId = 'yt_send_' + Math.random().toString(16).substring(2, 8);
-      const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x74]; // "MQTT"
+      const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54]; // "MQTT" (3.1.1)
       const version = 0x04; // 3.1.1
       const flags = 0x02; // Clean Session
       const keepAlive = [0x00, 0x3c]; // 60s
@@ -83,8 +84,18 @@
       const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
 
       const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
-      const header = [0x10, payload.length];
-      this.ws.send(new Uint8Array([...header, ...payload]));
+      
+      let x = payload.length;
+      const encodedLen = [];
+      do {
+        let digit = x % 128;
+        x = Math.floor(x / 128);
+        if (x > 0) digit = digit | 0x80;
+        encodedLen.push(digit);
+      } while (x > 0);
+
+      const packet = new Uint8Array([0x10, ...encodedLen, ...payload]);
+      this.ws.send(packet);
     }
 
     publish(topic, messageStr, retain = true) {

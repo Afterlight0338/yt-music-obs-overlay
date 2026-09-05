@@ -7,14 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <script src="mqtt.min.js"></script>
-  <script>
-    if (typeof mqtt === 'undefined') {
-      const cdn = document.createElement('script');
-      cdn.src = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
-      document.head.appendChild(cdn);
-    }
-  </script>
   <style>
     :root {
       --bg: #0d0f17;
@@ -307,7 +299,7 @@
 
         <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
           <button class="btn btn-secondary" onclick="sendTestTrack(true, false)">▶️ Test Song</button>
-          <button class="btn btn-secondary" onclick="sendTestTrack(true, true)">⏭️ Test with Up Next Queue</button>
+          <button class="btn btn-secondary" onclick="sendTestTrack(true, true)">⏭️ Test with Up Next</button>
         </div>
       </div>
     </div>
@@ -345,6 +337,86 @@
   </div>
 
   <script>
+    class NativeMQTTPublisher {
+      constructor(brokerUrl) {
+        this.brokerUrl = brokerUrl;
+        this.ws = null;
+        this.connected = false;
+        this.connect();
+      }
+
+      connect() {
+        try {
+          this.ws = new WebSocket(this.brokerUrl, ['mqtt']);
+          this.ws.binaryType = 'arraybuffer';
+        } catch (e) {
+          return;
+        }
+
+        this.ws.onopen = () => {
+          const clientId = 'setup_pub_' + Math.random().toString(16).substring(2, 8);
+          const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54];
+          const version = 0x04;
+          const flags = 0x02;
+          const keepAlive = [0x00, 0x3c];
+          const clientIdBytes = new TextEncoder().encode(clientId);
+          const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
+          const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
+          
+          let x = payload.length;
+          const encodedLen = [];
+          do {
+            let digit = x % 128;
+            x = Math.floor(x / 128);
+            if (x > 0) digit = digit | 0x80;
+            encodedLen.push(digit);
+          } while (x > 0);
+
+          this.ws.send(new Uint8Array([0x10, ...encodedLen, ...payload]));
+        };
+
+        this.ws.onmessage = (evt) => {
+          const buf = new Uint8Array(evt.data);
+          if (buf[0] >> 4 === 2) {
+            this.connected = true;
+          }
+        };
+
+        this.ws.onclose = () => {
+          this.connected = false;
+          setTimeout(() => this.connect(), 3000);
+        };
+      }
+
+      publish(topic, messageStr) {
+        if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const topicBytes = new TextEncoder().encode(topic);
+        const msgBytes = new TextEncoder().encode(messageStr);
+        const varLen = 2 + topicBytes.length + msgBytes.length;
+        const encodedLen = [];
+        let x = varLen;
+        do {
+          let digit = x % 128;
+          x = Math.floor(x / 128);
+          if (x > 0) digit = digit | 0x80;
+          encodedLen.push(digit);
+        } while (x > 0);
+
+        const packet = new Uint8Array(1 + encodedLen.length + 2 + topicBytes.length + msgBytes.length);
+        let offset = 0;
+        packet[offset++] = 0x31; // retain = true
+        for (let b of encodedLen) packet[offset++] = b;
+        packet[offset++] = (topicBytes.length >> 8) & 0xff;
+        packet[offset++] = topicBytes.length & 0xff;
+        packet.set(topicBytes, offset);
+        offset += topicBytes.length;
+        packet.set(msgBytes, offset);
+        this.ws.send(packet);
+      }
+    }
+
+    const testPublisher = new NativeMQTTPublisher('wss://broker.emqx.io:8084/mqtt');
+
     const themeSelect = document.getElementById('theme-select');
     const accentInput = document.getElementById('accent-color');
     const obsUrlDisplay = document.getElementById('obs-url-display');
@@ -378,11 +450,7 @@
       alert("✅ OBS Overlay URL copied to clipboard!");
     }
 
-    let testClient = null;
     function sendTestTrack(playing, withUpcoming) {
-      if (!testClient) {
-        testClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", { clean: true });
-      }
       const theme = themeSelect.value;
       const accent = accentInput.value;
       const upcoming = withUpcoming ? [
@@ -406,7 +474,8 @@
         source: "ytmusic",
         timestamp: Date.now()
       };
-      testClient.publish("yt/overlay/yt-overlay", JSON.stringify(mockData), { retain: true });
+
+      testPublisher.publish("yt/overlay/yt-overlay", JSON.stringify(mockData));
     }
   </script>
 </body>

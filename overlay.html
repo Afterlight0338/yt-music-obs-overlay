@@ -896,15 +896,25 @@
 
       sendConnect() {
         const clientId = 'obs_rec_' + Math.random().toString(16).substring(2, 8);
-        const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x74];
+        const protocol = [0x00, 0x04, 0x4d, 0x51, 0x54, 0x54]; // "MQTT" (3.1.1)
         const version = 0x04;
         const flags = 0x02;
         const keepAlive = [0x00, 0x3c];
         const clientIdBytes = new TextEncoder().encode(clientId);
         const idLen = [clientIdBytes.length >> 8, clientIdBytes.length & 0xff];
         const payload = [...protocol, version, flags, ...keepAlive, ...idLen, ...clientIdBytes];
-        const header = [0x10, payload.length];
-        this.ws.send(new Uint8Array([...header, ...payload]));
+        
+        let x = payload.length;
+        const encodedLen = [];
+        do {
+          let digit = x % 128;
+          x = Math.floor(x / 128);
+          if (x > 0) digit = digit | 0x80;
+          encodedLen.push(digit);
+        } while (x > 0);
+
+        const packet = new Uint8Array([0x10, ...encodedLen, ...payload]);
+        this.ws.send(packet);
       }
 
       sendSubscribe(topics) {
@@ -914,8 +924,17 @@
           const topicBytes = new TextEncoder().encode(t);
           payload.push((topicBytes.length >> 8) & 0xff, topicBytes.length & 0xff, ...topicBytes, 0x00);
         }
-        const header = [0x82, payload.length];
-        this.ws.send(new Uint8Array([...header, ...payload]));
+        let x = payload.length;
+        const encodedLen = [];
+        do {
+          let digit = x % 128;
+          x = Math.floor(x / 128);
+          if (x > 0) digit = digit | 0x80;
+          encodedLen.push(digit);
+        } while (x > 0);
+
+        const packet = new Uint8Array([0x82, ...encodedLen, ...payload]);
+        this.ws.send(packet);
       }
     }
 
