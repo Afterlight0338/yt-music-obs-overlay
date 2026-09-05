@@ -18,7 +18,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800;900&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Press+Start+2P&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-color: rgba(18, 18, 22, 0.85);
+      --bg-color: rgba(18, 18, 22, 0.88);
       --card-border: rgba(255, 255, 255, 0.12);
       --accent: #ff0055;
       --accent-glow: rgba(255, 0, 85, 0.4);
@@ -56,6 +56,9 @@
                   transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
       will-change: transform, opacity;
       pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     #overlay-container.visible {
@@ -67,7 +70,7 @@
        THEME 1: MODERN GLASS (DEFAULT)
        ======================================================== */
     .widget-card {
-      width: 420px;
+      width: 440px;
       max-width: 95vw;
       background: var(--bg-color);
       backdrop-filter: blur(24px) saturate(180%);
@@ -250,6 +253,91 @@
     }
 
     /* ========================================================
+       UP NEXT QUEUE SECTION
+       ======================================================== */
+    #upcoming-container {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(14, 14, 18, 0.82);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 8px 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      animation: slideUp 0.3s ease;
+      width: 440px;
+      max-width: 95vw;
+    }
+
+    #upcoming-container.has-items {
+      display: flex;
+    }
+
+    .upcoming-header {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .upcoming-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .upcoming-item:first-of-type {
+      border-top: none;
+    }
+
+    .upcoming-thumb {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #222;
+    }
+
+    .upcoming-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .upcoming-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .upcoming-artist {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ========================================================
        THEME 2: COMPACT FLOATING PILL
        ======================================================== */
     body.theme-compact .widget-card,
@@ -272,6 +360,12 @@
     body.theme-compact .album,
     body.theme-pill .album {
       display: none;
+    }
+    body.theme-compact #upcoming-container,
+    body.theme-pill #upcoming-container {
+      width: auto;
+      max-width: 380px;
+      border-radius: 16px;
     }
 
     /* ========================================================
@@ -365,9 +459,11 @@
       box-shadow: 0 0 10px #00f0ff;
       border-radius: 0;
     }
-    body.theme-cyberpunk .eq-bar,
-    body.theme-neon .eq-bar {
-      background: #00f0ff;
+    body.theme-cyberpunk #upcoming-container,
+    body.theme-neon #upcoming-container {
+      border: 1px solid #00f0ff;
+      border-radius: 0;
+      background: rgba(8, 12, 22, 0.94);
     }
 
     /* ========================================================
@@ -393,10 +489,6 @@
     body.theme-bar .eq-bar {
       background: #1db954;
     }
-    body.theme-spotify .yt-icon path,
-    body.theme-bar .yt-icon path {
-      fill: #1db954;
-    }
 
     /* ========================================================
        THEME 6: LO-FI / PASTEL AESTHETIC
@@ -406,7 +498,7 @@
     }
     body.theme-lofi .widget-card,
     body.theme-pastel .widget-card {
-      width: 400px;
+      width: 420px;
       background: rgba(36, 30, 50, 0.88);
       border: 2px solid rgba(255, 182, 193, 0.45);
       border-radius: 26px;
@@ -430,14 +522,11 @@
     body.theme-pastel .artist {
       color: #bbf2f6;
     }
-    body.theme-lofi .progress-fill,
-    body.theme-pastel .progress-fill {
-      background: linear-gradient(90deg, #ffd1dc, #bbf2f6);
-      box-shadow: 0 0 10px rgba(255, 209, 220, 0.5);
-    }
-    body.theme-lofi .eq-bar,
-    body.theme-pastel .eq-bar {
-      background: #ffd1dc;
+    body.theme-lofi #upcoming-container,
+    body.theme-pastel #upcoming-container {
+      border: 2px solid rgba(255, 182, 193, 0.45);
+      border-radius: 18px;
+      background: rgba(36, 30, 50, 0.88);
     }
 
     /* ========================================================
@@ -485,27 +574,12 @@
     body.theme-arcade .album {
       display: none;
     }
-    body.theme-pixel .progress-bar-bg,
-    body.theme-arcade .progress-bar-bg {
-      height: 6px;
+    body.theme-pixel #upcoming-container,
+    body.theme-arcade #upcoming-container {
+      border: 2px solid #fff;
       border-radius: 0;
-      background: #222;
-      border: 1px solid #fff;
-    }
-    body.theme-pixel .progress-fill,
-    body.theme-arcade .progress-fill {
-      border-radius: 0;
-      background: #00ff66;
-    }
-    body.theme-pixel .time-row,
-    body.theme-arcade .time-row {
-      font-family: 'Press Start 2P', monospace;
+      background: #000;
       font-size: 8px;
-    }
-    body.theme-pixel .eq-bar,
-    body.theme-arcade .eq-bar {
-      background: #00ff66;
-      border-radius: 0;
     }
 
     /* ========================================================
@@ -531,10 +605,6 @@
     body.theme-minimal .artist {
       font-size: 14px;
       text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9), 0 0 2px #000;
-    }
-    body.theme-minimal .art-wrapper {
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
-      border-radius: 10px;
     }
   </style>
 </head>
@@ -577,13 +647,20 @@
         </div>
       </div>
     </div>
+
+    <!-- UP NEXT PLAYLIST / MIX QUEUE -->
+    <div id="upcoming-container">
+      <div class="upcoming-header">
+        <span>⏭️ Up Next</span>
+      </div>
+      <div id="upcoming-list"></div>
+    </div>
   </div>
 
   <script>
-    // Channel defaults to 'yt-overlay' (zero manual config needed!)
     const params = new URLSearchParams(window.location.search);
     const channelId = params.get('channel') || 'yt-overlay';
-    const forcedTheme = params.get('theme'); // Optional hard override if desired in URL
+    const forcedTheme = params.get('theme');
     let autohide = params.get('autohide') !== 'false';
 
     const themeClasses = [
@@ -643,6 +720,8 @@
     const progressFillEl = document.getElementById('progress-fill');
     const currentTimeEl = document.getElementById('current-time');
     const totalTimeEl = document.getElementById('total-time');
+    const upcomingContainer = document.getElementById('upcoming-container');
+    const upcomingList = document.getElementById('upcoming-list');
 
     let currentTrack = null;
     let currentSeconds = 0;
@@ -657,13 +736,37 @@
       return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
 
+    function renderUpcoming(items) {
+      if (!items || items.length === 0) {
+        upcomingContainer.classList.remove('has-items');
+        upcomingList.innerHTML = '';
+        return;
+      }
+
+      upcomingContainer.classList.add('has-items');
+      upcomingList.innerHTML = items.map(track => `
+        <div class="upcoming-item">
+          ${track.artwork ? `<img class="upcoming-thumb" src="${track.artwork}" alt="">` : ''}
+          <div class="upcoming-info">
+            <span class="upcoming-title">${escapeHtml(track.title)}</span>
+            <span class="upcoming-artist">${escapeHtml(track.artist || '')}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     function updateState(data) {
       if (!data || !data.title) {
         if (autohide) container.classList.remove('visible');
         return;
       }
 
-      // Dynamically morph theme & accent in real-time from broadcast!
+      // Dynamic theme & accent sync
       if (data.theme && !forcedTheme) {
         applyTheme(data.theme);
       }
@@ -685,6 +788,8 @@
       currentSeconds = data.currentTime || 0;
       durationSeconds = data.duration || 0;
       isPlaying = !!data.isPlaying;
+
+      renderUpcoming(data.upcoming);
 
       if (isPlaying) {
         container.classList.add('playing');

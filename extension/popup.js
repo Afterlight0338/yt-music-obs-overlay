@@ -1,15 +1,17 @@
 document.addEventListener('DOMContentLoaded', () => {
   const themeSelect = document.getElementById('theme');
+  const upcomingSelect = document.getElementById('upcoming-count');
   const accentInput = document.getElementById('accent');
   const accentHex = document.getElementById('accent-hex');
   const autohideCheck = document.getElementById('autohide');
   const copyBtn = document.getElementById('copy-btn');
   const statusEl = document.getElementById('status');
 
-  // Load existing settings
-  chrome.storage.sync.get(['theme', 'accent', 'autohide'], (res) => {
+  // Load stored preferences
+  chrome.storage.sync.get(['theme', 'upcomingCount', 'accent', 'autohide'], (res) => {
     if (res) {
       if (res.theme) themeSelect.value = res.theme;
+      if (res.upcomingCount !== undefined) upcomingSelect.value = res.upcomingCount;
       if (res.accent) {
         accentInput.value = res.accent;
         accentHex.textContent = res.accent;
@@ -20,20 +22,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function broadcastChange() {
     const theme = themeSelect.value;
+    const upcomingCount = parseInt(upcomingSelect.value, 10);
     const accent = accentInput.value;
     const autohide = autohideCheck.checked;
 
     accentHex.textContent = accent;
 
     // Save to storage
-    chrome.storage.sync.set({ theme, accent, autohide }, () => {
-      statusEl.textContent = '✨ Theme synced to OBS!';
+    chrome.storage.sync.set({ theme, upcomingCount, accent, autohide }, () => {
+      statusEl.textContent = '✨ Settings synced live!';
       setTimeout(() => {
         statusEl.textContent = '';
       }, 1500);
     });
 
-    // Send direct runtime message to any open YouTube/YTM tabs
+    // Notify all active YouTube & YT Music tabs immediately
     if (chrome.tabs && chrome.tabs.query) {
       chrome.tabs.query({ url: ["*://*.youtube.com/*", "*://youtube.com/*", "*://music.youtube.com/*"] }, (tabs) => {
         if (tabs) {
@@ -41,11 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
             chrome.tabs.sendMessage(tab.id, {
               action: 'force_update',
               theme,
+              upcomingCount,
               accent,
               autohide
             }, () => {
               if (chrome.runtime.lastError) {
-                // Tab might be in background or dormant
+                // Ignore dormant tabs
               }
             });
           });
@@ -55,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   themeSelect.addEventListener('change', broadcastChange);
+  upcomingSelect.addEventListener('change', broadcastChange);
   accentInput.addEventListener('input', broadcastChange);
   autohideCheck.addEventListener('change', broadcastChange);
 

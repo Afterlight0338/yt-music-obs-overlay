@@ -13,7 +13,7 @@
       padding: 0;
     }
     body {
-      width: 280px;
+      width: 290px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #11131c;
       color: #f3f4f6;
@@ -136,14 +136,26 @@
   <div class="form-group">
     <label>Theme Style (Updates Live!)</label>
     <select id="theme">
-      <option value="default">Modern Glass Card</option>
-      <option value="compact">Compact Floating Pill</option>
-      <option value="vinyl">Retro Spinning Vinyl</option>
-      <option value="cyberpunk">Cyberpunk Neon HUD</option>
-      <option value="spotify">Spotify Clean Bar</option>
-      <option value="lofi">Lo-Fi Pastel Anime</option>
-      <option value="pixel">Retro 8-Bit Pixel Arcade</option>
-      <option value="minimal">Ultra Minimal (Text Only)</option>
+      <option value="default">✨ Modern Glass Card</option>
+      <option value="compact">💊 Compact Floating Pill</option>
+      <option value="vinyl">💿 Retro Spinning Vinyl</option>
+      <option value="cyberpunk">🤖 Cyberpunk Neon HUD</option>
+      <option value="spotify">🟢 Spotify Clean Bar</option>
+      <option value="lofi">🌸 Lo-Fi Pastel Anime</option>
+      <option value="pixel">👾 Retro 8-Bit Pixel Arcade</option>
+      <option value="minimal">🪶 Ultra Minimal (Text Only)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>Up Next Playlist / Mix Queue</label>
+    <select id="upcoming-count">
+      <option value="0">Off (Don't show Up Next)</option>
+      <option value="1">1 Next Track</option>
+      <option value="2">2 Next Tracks</option>
+      <option value="3" selected>3 Next Tracks (Default)</option>
+      <option value="4">4 Next Tracks</option>
+      <option value="5">5 Next Tracks</option>
     </select>
   </div>
 
@@ -162,13 +174,8 @@
     </label>
   </div>
 
-  <div class="form-group">
-    <label>Channel (Optional):</label>
-    <input type="text" id="channel" value="yt-overlay" placeholder="yt-overlay" />
-  </div>
-
   <div class="actions">
-    <button id="copy-btn" class="btn-secondary">📋 Copy OBS Browser Link</button>
+    <button id="copy-btn" class="btn-secondary">📋 Copy Local OBS File Link</button>
   </div>
   <div class="status" id="status"></div>
 

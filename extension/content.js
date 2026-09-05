@@ -2,24 +2,26 @@
  * YouTube & YouTube Music OBS Broadcaster - Content Script
  */
 (function () {
-  console.log('[YT-OBS] Overlay broadcaster initialized on:', window.location.hostname);
+  console.log('[YT-OBS] Overlay broadcaster active on:', window.location.hostname);
 
   let channelId = 'yt-overlay';
   let theme = 'default';
   let accent = '#ff0055';
   let autohide = true;
+  let upcomingCount = 3; // Default 3 upcoming songs
   let client = null;
   let isConnected = false;
 
-  // Load settings from storage
+  // Load preferences from storage
   function loadSettings(cb) {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get(['channelId', 'theme', 'accent', 'autohide'], (res) => {
+      chrome.storage.sync.get(['channelId', 'theme', 'accent', 'autohide', 'upcomingCount'], (res) => {
         if (res) {
           if (res.channelId) channelId = res.channelId;
           if (res.theme) theme = res.theme;
           if (res.accent) accent = res.accent;
           if (res.autohide !== undefined) autohide = res.autohide;
+          if (res.upcomingCount !== undefined) upcomingCount = parseInt(res.upcomingCount, 10);
         }
         if (cb) cb();
       });
@@ -40,34 +42,34 @@
         if (changes.theme) theme = changes.theme.newValue || 'default';
         if (changes.accent) accent = changes.accent.newValue || '#ff0055';
         if (changes.autohide !== undefined) autohide = changes.autohide.newValue;
+        if (changes.upcomingCount !== undefined) upcomingCount = parseInt(changes.upcomingCount.newValue, 10);
 
-        console.log('[YT-OBS] Live settings updated:', { channelId, theme, accent, autohide });
         createBadge();
 
         if (channelChanged && client) {
           client.end(true, () => initMQTT());
         } else {
-          // Instantly send updated theme/accent to OBS!
           sendTrackInfo(true);
         }
       }
     });
   }
 
-  // Listen for direct messages from popup
+  // Runtime message listener from popup
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg && msg.action === 'force_update') {
         if (msg.theme) theme = msg.theme;
         if (msg.accent) accent = msg.accent;
         if (msg.autohide !== undefined) autohide = msg.autohide;
+        if (msg.upcomingCount !== undefined) upcomingCount = parseInt(msg.upcomingCount, 10);
         sendTrackInfo(true);
         sendResponse({ success: true });
       }
     });
   }
 
-  // Unobtrusive visual badge on bottom right
+  // Status badge on bottom right
   function createBadge() {
     let badge = document.getElementById('yt-obs-status-badge');
     if (!badge) {
@@ -77,7 +79,7 @@
         position: fixed;
         bottom: 80px;
         right: 20px;
-        background: rgba(18, 18, 24, 0.9);
+        background: rgba(18, 18, 24, 0.92);
         color: #fff;
         border: 1px solid rgba(255, 255, 255, 0.15);
         backdrop-filter: blur(10px);
@@ -93,10 +95,9 @@
         box-shadow: 0 4px 16px rgba(0,0,0,0.4);
         cursor: pointer;
         user-select: none;
-        transition: transform 0.2s ease;
       `;
       badge.onclick = () => {
-        alert(`📡 OBS Overlay Active\n\nPlatform: ${window.location.hostname}\nTheme: ${theme}\nStatus: ${isConnected ? '🟢 Connected to OBS' : '🟡 Connecting...'}\n\nChange themes anytime in the extension popup!`);
+        alert(`📡 OBS Overlay Active\n\nPlatform: ${window.location.hostname}\nTheme: ${theme}\nStatus: ${isConnected ? '🟢 Connected to OBS' : '🟡 Connecting...'}`);
       };
       document.body.appendChild(badge);
     }
@@ -119,7 +120,7 @@
       client = mqtt.connect(brokerUrl, {
         clientId: 'yt_send_' + Math.random().toString(16).substring(2, 8),
         clean: true,
-        reconnectPeriod: 4000
+        reconnectPeriod: 3000
       });
 
       client.on('connect', () => {
@@ -128,7 +129,7 @@
         sendTrackInfo(true);
       });
 
-      client.on('error', (err) => {
+      client.on('error', () => {
         isConnected = false;
         createBadge();
         client.end();
@@ -145,13 +146,61 @@
     connect();
   }
 
+  // Extract playlist/queue upcoming items
+  function getUpcomingTracks(maxCount) {
+    if (maxCount <= 0) return [];
+    const upcoming = [];
+    const isYTM = window.location.hostname.includes('music.youtube.com');
+
+    if (isYTM) {
+      // YouTube Music Queue
+      const queueItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
+      if (queueItems.length > 0) {
+        let activeIdx = queueItems.findIndex(el =>
+          el.hasAttribute('selected') ||
+          el.getAttribute('play-button-state') === 'playing' ||
+          el.getAttribute('play-button-state') === 'paused'
+        );
+        if (activeIdx !== -1) {
+          const nextSlice = queueItems.slice(activeIdx + 1, activeIdx + 1 + maxCount);
+          nextSlice.forEach(item => {
+            const t = item.querySelector('.song-title')?.textContent?.trim() || item.querySelector('.title')?.textContent?.trim() || '';
+            const a = item.querySelector('.byline')?.textContent?.trim() || '';
+            const img = item.querySelector('img')?.src || '';
+            if (t) {
+              upcoming.push({ title: t, artist: a, artwork: img });
+            }
+          });
+        }
+      }
+    } else {
+      // Regular YouTube Playlist / Mix Panel
+      const panelItems = Array.from(document.querySelectorAll('ytd-playlist-panel-renderer ytd-playlist-panel-video-renderer'));
+      if (panelItems.length > 0) {
+        let activeIdx = panelItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected') || el.querySelector('.selected'));
+        if (activeIdx !== -1) {
+          const nextSlice = panelItems.slice(activeIdx + 1, activeIdx + 1 + maxCount);
+          nextSlice.forEach(item => {
+            const t = item.querySelector('#video-title')?.textContent?.trim() || '';
+            const a = item.querySelector('#byline')?.textContent?.trim() || item.querySelector('#channel-name')?.textContent?.trim() || '';
+            const img = item.querySelector('img')?.src || '';
+            if (t) {
+              upcoming.push({ title: t, artist: a, artwork: img });
+            }
+          });
+        }
+      }
+    }
+
+    return upcoming;
+  }
+
   function getTrackData() {
     const isYTM = window.location.hostname.includes('music.youtube.com');
     const video = document.querySelector('video.html5-main-video') ||
                   document.querySelector('#movie_player video') ||
+                  document.querySelector('.html5-video-player video') ||
                   document.querySelector('video');
-
-    const meta = navigator.mediaSession ? navigator.mediaSession.metadata : null;
 
     let title = '';
     let artist = '';
@@ -164,54 +213,61 @@
       const bylineEl = document.querySelector('ytmusic-player-bar .byline');
       const imgEl = document.querySelector('ytmusic-player-bar .image');
 
-      title = meta && meta.title ? meta.title : (titleEl ? titleEl.textContent.trim() : '');
-      artist = meta && meta.artist ? meta.artist : (bylineEl ? bylineEl.textContent.trim() : '');
-      album = meta && meta.album ? meta.album : '';
+      title = (titleEl ? titleEl.textContent.trim() : '') || (navigator.mediaSession?.metadata?.title || '');
+      artist = (bylineEl ? bylineEl.textContent.trim() : '') || (navigator.mediaSession?.metadata?.artist || '');
+      album = navigator.mediaSession?.metadata?.album || 'YouTube Music';
 
-      if (meta && meta.artwork && meta.artwork.length > 0) {
-        artwork = meta.artwork[meta.artwork.length - 1].src;
-      } else if (imgEl && imgEl.src) {
+      if (imgEl && imgEl.src) {
         artwork = imgEl.src;
+      } else if (navigator.mediaSession?.metadata?.artwork?.length > 0) {
+        artwork = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
       }
     } else {
-      // Regular YouTube Specific Selectors
+      // Regular YouTube - Universal Exhaustive Fallback Hierarchy
       const ytTitleEl = document.querySelector('ytd-watch-metadata #title h1 yt-formatted-string') ||
                         document.querySelector('h1.ytd-watch-metadata yt-formatted-string') ||
+                        document.querySelector('ytd-watch-metadata h1') ||
                         document.querySelector('#title h1 yt-formatted-string') ||
-                        document.querySelector('h1.title yt-formatted-string') ||
+                        document.querySelector('h1.title.style-scope.ytd-video-primary-info-renderer yt-formatted-string') ||
                         document.querySelector('#container h1.ytd-watch-metadata');
 
       const ytChannelEl = document.querySelector('ytd-watch-metadata #channel-name #text a') ||
+                          document.querySelector('ytd-watch-metadata ytd-channel-name yt-formatted-string a') ||
                           document.querySelector('#owner #channel-name a') ||
-                          document.querySelector('ytd-channel-name yt-formatted-string a') ||
-                          document.querySelector('#channel-name a');
+                          document.querySelector('#upload-info #channel-name a') ||
+                          document.querySelector('ytd-video-owner-renderer #channel-name a');
 
-      title = meta && meta.title ? meta.title : (ytTitleEl ? ytTitleEl.textContent.trim() : '');
+      title = ytTitleEl ? ytTitleEl.textContent.trim() : '';
       if (!title) {
-        title = document.title.replace(' - YouTube', '').replace(/^\(\d+\)\s*/, '').trim();
+        const docTitle = document.title || '';
+        title = docTitle.replace(' - YouTube', '').replace(/^\(\d+\)\s*/, '').trim();
       }
 
-      artist = meta && meta.artist ? meta.artist : (ytChannelEl ? ytChannelEl.textContent.trim() : 'YouTube');
+      artist = ytChannelEl ? ytChannelEl.textContent.trim() : 'YouTube';
       album = 'YouTube';
 
-      if (meta && meta.artwork && meta.artwork.length > 0) {
-        artwork = meta.artwork[meta.artwork.length - 1].src;
-      } else {
-        const vParam = new URLSearchParams(window.location.search).get('v');
-        if (vParam) {
-          artwork = `https://i.ytimg.com/vi/${vParam}/hqdefault.jpg`;
-        } else if (window.location.pathname.includes('/shorts/')) {
-          const shortId = window.location.pathname.split('/shorts/')[1]?.split('?')[0];
-          if (shortId) {
-            artwork = `https://i.ytimg.com/vi/${shortId}/hqdefault.jpg`;
-          }
+      // Thumbnail extraction
+      const vParam = new URLSearchParams(window.location.search).get('v');
+      if (vParam) {
+        artwork = `https://i.ytimg.com/vi/${vParam}/hqdefault.jpg`;
+      } else if (window.location.pathname.includes('/shorts/')) {
+        const shortId = window.location.pathname.split('/shorts/')[1]?.split('?')[0];
+        if (shortId) {
+          artwork = `https://i.ytimg.com/vi/${shortId}/hqdefault.jpg`;
         }
+      }
+
+      if (!artwork && navigator.mediaSession?.metadata?.artwork?.length > 0) {
+        artwork = navigator.mediaSession.metadata.artwork[navigator.mediaSession.metadata.artwork.length - 1].src;
       }
     }
 
     const currentTime = video ? video.currentTime : 0;
     const duration = video && !isNaN(video.duration) ? video.duration : 0;
     const isPlaying = video ? (!video.paused && !video.ended && video.readyState > 0) : false;
+
+    // Detect upcoming tracks from playlist / mix
+    const upcoming = getUpcomingTracks(upcomingCount);
 
     return {
       title: title || '',
@@ -221,6 +277,7 @@
       currentTime: currentTime,
       duration: duration,
       isPlaying: isPlaying,
+      upcoming: upcoming,
       theme: theme,
       accent: accent,
       autohide: autohide,
@@ -233,18 +290,18 @@
     if (!client || !isConnected) return;
     const data = getTrackData();
 
-    // If nothing is playing and no title exists, don't spam unless forced
-    if (!data.title && !data.isPlaying && !force) return;
+    // If no title exists and not forced, skip
+    if (!data.title && !force) return;
 
     const payload = JSON.stringify(data);
     client.publish(`yt/overlay/${channelId}`, payload, { qos: 0, retain: true });
     client.publish(`ytm/overlay/${channelId}`, payload, { qos: 0, retain: true });
   }
 
-  // Periodic updates while tab is active
+  // Fast polling loop to detect any video/page changes
   setInterval(() => sendTrackInfo(false), 800);
 
-  // Hook into video playback events & SPA navigation on YouTube
+  // Attach event listeners
   function attachVideoListeners() {
     const video = document.querySelector('video.html5-main-video') ||
                   document.querySelector('#movie_player video') ||
@@ -256,22 +313,25 @@
       video.addEventListener('pause', () => sendTrackInfo(true));
       video.addEventListener('seeked', () => sendTrackInfo(true));
       video.addEventListener('loadeddata', () => sendTrackInfo(true));
+      video.addEventListener('timeupdate', () => {
+        // Periodic time tick
+      });
     }
   }
 
-  // Re-attach listeners on YouTube SPA navigation
+  // SPA navigation hooks
   window.addEventListener('yt-navigate-finish', () => {
     setTimeout(() => {
       attachVideoListeners();
       sendTrackInfo(true);
-    }, 500);
+    }, 400);
   });
 
   document.addEventListener('spfdone', () => {
     setTimeout(() => {
       attachVideoListeners();
       sendTrackInfo(true);
-    }, 500);
+    }, 400);
   });
 
   setInterval(attachVideoListeners, 1500);

@@ -200,7 +200,7 @@
 
     .preview-box {
       position: relative;
-      height: 250px;
+      height: 300px;
       background: radial-gradient(circle at center, #1b2033 0%, #0c0e17 100%);
       border: 1px dashed var(--card-border);
       border-radius: 12px;
@@ -261,7 +261,7 @@
     <header>
       <div class="badge">YouTube & YT Music • OBS Overlay</div>
       <h1>Live Overlay Customizer</h1>
-      <p class="subtitle">Stream live video & music playback into OBS Studio with real-time dynamic theme switching.</p>
+      <p class="subtitle">Stream live video & music playback into OBS Studio with real-time dynamic theme switching & Up Next queue.</p>
     </header>
 
     <div class="grid">
@@ -292,9 +292,9 @@
         </div>
 
         <div class="form-group" style="margin-top: 20px;">
-          <label>Your OBS Browser Source Link (No complex parameters needed!):</label>
+          <label>Your Local OBS Browser Source Link:</label>
           <div class="code-box" id="obs-url-display">...</div>
-          <button class="btn btn-secondary" style="margin-top: 8px;" onclick="copyObsUrl()">📋 Copy OBS URL</button>
+          <button class="btn btn-secondary" style="margin-top: 8px;" onclick="copyObsUrl()">📋 Copy OBS File Link</button>
         </div>
       </div>
 
@@ -306,8 +306,8 @@
         </div>
 
         <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <button class="btn btn-secondary" onclick="sendTestTrack(true)">▶️ Test Song (Playing)</button>
-          <button class="btn btn-secondary" onclick="sendTestTrack(false)">⏸️ Test Pause</button>
+          <button class="btn btn-secondary" onclick="sendTestTrack(true, false)">▶️ Test Song</button>
+          <button class="btn btn-secondary" onclick="sendTestTrack(true, true)">⏭️ Test with Up Next Queue</button>
         </div>
       </div>
     </div>
@@ -329,7 +329,7 @@
           <div class="step-num">2</div>
           <div class="step-content">
             <h3>Add Browser Source in OBS Studio</h3>
-            <p>In OBS, click <b>+</b> under <b>Sources</b> &rarr; <b>Browser</b> &rarr; Paste your link &rarr; set Width <b>500</b>, Height <b>250</b>.</p>
+            <p>In OBS, click <b>+</b> under <b>Sources</b> &rarr; <b>Browser</b> &rarr; Check <b>Local file</b> &rarr; select <code>overlay.html</code> &rarr; set Width <b>500</b>, Height <b>300</b>.</p>
           </div>
         </div>
 
@@ -337,7 +337,7 @@
           <div class="step-num">3</div>
           <div class="step-content">
             <h3>Play YouTube or YouTube Music!</h3>
-            <p>Open YouTube or YouTube Music. The overlay updates automatically in real-time!</p>
+            <p>Play any video or playlist. The overlay updates automatically in real-time!</p>
           </div>
         </div>
       </div>
@@ -364,11 +364,11 @@
 
     themeSelect.addEventListener('change', () => {
       updateAll();
-      sendTestTrack(true);
+      sendTestTrack(true, false);
     });
     accentInput.addEventListener('input', () => {
       updateAll();
-      sendTestTrack(true);
+      sendTestTrack(true, false);
     });
 
     updateAll();
@@ -379,12 +379,18 @@
     }
 
     let testClient = null;
-    function sendTestTrack(playing) {
+    function sendTestTrack(playing, withUpcoming) {
       if (!testClient) {
         testClient = mqtt.connect("wss://broker.emqx.io:8084/mqtt", { clean: true });
       }
       const theme = themeSelect.value;
       const accent = accentInput.value;
+      const upcoming = withUpcoming ? [
+        { title: "Save Your Tears", artist: "The Weeknd", artwork: "https://lh3.googleusercontent.com/uG_7F00C8lT0K22D9mOq1Z7v4e5qF8k5_0wH6X4aR1vC_5W1c4u-k=w544-h544-l90-rj" },
+        { title: "After Hours", artist: "The Weeknd", artwork: "https://lh3.googleusercontent.com/uG_7F00C8lT0K22D9mOq1Z7v4e5qF8k5_0wH6X4aR1vC_5W1c4u-k=w544-h544-l90-rj" },
+        { title: "In Your Eyes", artist: "The Weeknd", artwork: "https://lh3.googleusercontent.com/uG_7F00C8lT0K22D9mOq1Z7v4e5qF8k5_0wH6X4aR1vC_5W1c4u-k=w544-h544-l90-rj" }
+      ] : [];
+
       const mockData = {
         title: "Blinding Lights",
         artist: "The Weeknd",
@@ -393,6 +399,7 @@
         currentTime: 92,
         duration: 200,
         isPlaying: playing,
+        upcoming: upcoming,
         theme: theme,
         accent: accent,
         autohide: true,
