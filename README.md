@@ -1,5 +1,5 @@
 # yt-music-obs-overlay
-Simple, zero-download OBS overlay for YouTube & YouTube Music with dynamic theme switching.
+simple vibecoded overlay for yt music
 
 ## How to Use
 
